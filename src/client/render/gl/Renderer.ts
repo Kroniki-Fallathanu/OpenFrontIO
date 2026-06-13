@@ -10,6 +10,7 @@
  */
 
 import type { Config } from "../../../core/configuration/Config";
+import { ClientEnv } from "../../ClientEnv";
 import type {
   AttackRingInput,
   BonusEvent,
@@ -209,7 +210,12 @@ export class GPURenderer {
     this.camera = new Camera(mapW, mapH);
 
     // --- Terrain (static) ---
-    const terrainRGBA = buildTerrainRGBA(terrainBytes, mapW, mapH);
+    const terrainRGBA = buildTerrainRGBA(
+      terrainBytes,
+      mapW,
+      mapH,
+      ClientEnv.fantasyTheme(),
+    );
     this.terrainPass = new TerrainPass(gl, terrainRGBA, mapW, mapH);
 
     // --- Shared palette texture (RGBA32F, 4096×2) ---

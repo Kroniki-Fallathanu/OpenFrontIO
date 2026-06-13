@@ -30,6 +30,8 @@ export async function renderHtmlContent(htmlPath: string): Promise<string> {
     jwtAudience: JSON.stringify(ServerEnv.jwtAudience()),
     instanceId: JSON.stringify(ServerEnv.instanceId()),
     externalApiDisabled: JSON.stringify(ServerEnv.externalApiDisabled()),
+    adsDisabled: ServerEnv.adsDisabled(),
+    fantasyTheme: ServerEnv.fantasyTheme(),
     manifestHref: buildAssetUrl("manifest.json", assetManifest, cdnBase),
     faviconHref: buildAssetUrl("images/Favicon.svg", assetManifest, cdnBase),
     gameplayScreenshotUrl: buildAssetUrl(

@@ -1,5 +1,6 @@
 import colorblindTheme from "./colorblind-theme.json";
 import defaultTheme from "./default-theme.json";
+import fantasyTheme from "./fantasy-theme.json";
 import defaults from "./render-settings.json";
 
 /**
@@ -369,12 +370,13 @@ export interface RenderSettings {
   lightConfigs: Record<string, { radius: number; intensity: number }>;
 }
 
-export type ThemeName = "default" | "colorblind";
+export type ThemeName = "default" | "colorblind" | "fantasy";
 
 // Typed so tsc validates each theme JSON against the ThemeSettings shape.
 const THEMES: Record<ThemeName, ThemeSettings> = {
   default: defaultTheme,
   colorblind: colorblindTheme,
+  fantasy: fantasyTheme,
 };
 
 /** Create fresh theme settings with defaults from the named theme JSON. */

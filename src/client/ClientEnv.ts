@@ -43,6 +43,7 @@ export class ClientEnv {
       instanceId: bc.instanceId,
       gitCommit: bc.gitCommit,
       externalApiDisabled: bc.externalApiDisabled ?? false,
+      fantasyTheme: bc.fantasyTheme ?? false,
     };
     return ClientEnv.values;
   }
@@ -74,6 +75,14 @@ export class ClientEnv {
     // legacy app shells) — missing config means vanilla behavior, not a crash.
     try {
       return ClientEnv.get().externalApiDisabled;
+    } catch {
+      return false;
+    }
+  }
+  static fantasyTheme(): boolean {
+    // Fail-safe like externalApiDisabled: missing config means vanilla theme.
+    try {
+      return ClientEnv.get().fantasyTheme;
     } catch {
       return false;
     }
@@ -128,4 +137,5 @@ export interface ClientEnvValues {
   instanceId: string;
   gitCommit: string;
   externalApiDisabled: boolean;
+  fantasyTheme: boolean;
 }

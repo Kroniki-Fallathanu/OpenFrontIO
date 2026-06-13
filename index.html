@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="h-full preload" translate="no">
+<html lang="en" class="h-full preload" translate="no"<% if (fantasyTheme) { %> data-theme="fantasy"<% } %>>
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -70,6 +70,7 @@
         jwtAudience: <%- jwtAudience %>,
         instanceId: <%- instanceId %>,
         externalApiDisabled: <%- externalApiDisabled %>,
+        fantasyTheme: <%- fantasyTheme %>,
       };
       document.documentElement.style.setProperty(
         "--background-image-url",
@@ -85,11 +86,13 @@
       );
     </script>
 
+    <% if (!adsDisabled) { %>
     <!-- CrazyGames SDK -->
     <script
       src="https://sdk.crazygames.com/crazygames-sdk-v3.js"
       async
     ></script>
+    <% } %>
 
     <!-- Cloudflare Turnstile -->
     <script
@@ -98,6 +101,7 @@
       defer
     ></script>
 
+    <% if (!adsDisabled) { %>
     <script data-cfasync="false">
       window.ramp = window.ramp || {};
       window.ramp.que = window.ramp.que || [];
@@ -140,6 +144,7 @@
 
       gtag("config", "G-WQGQQ8RDN4");
     </script>
+    <% } %>
   </head>
 
   <body
@@ -435,13 +440,16 @@
       });
     </script>
 
+    <% if (!adsDisabled) { %>
     <!-- Analytics -->
     <script
       defer
       src="https://static.cloudflareinsights.com/beacon.min.js"
       data-cf-beacon='{"token": "03d93e6fefb349c28ee69b408fa25a13"}'
     ></script>
+    <% } %>
     <script type="module" src="/src/client/Main.ts"></script>
+    <% if (!adsDisabled) { %>
     <footer>
       <script
         data-cfasync="false"
@@ -449,5 +457,6 @@
         src="//cdn.intergient.com/1025558/75940/ramp.js"
       ></script>
     </footer>
+    <% } %>
   </body>
 </html>

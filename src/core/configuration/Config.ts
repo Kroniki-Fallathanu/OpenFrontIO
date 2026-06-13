@@ -34,6 +34,7 @@ declare global {
       jwtAudience?: string;
       instanceId?: string;
       externalApiDisabled?: boolean;
+      fantasyTheme?: boolean;
     };
   }
 }
