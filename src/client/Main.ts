@@ -328,6 +328,18 @@ class Client {
     document.fonts.add(openFrontFont);
     openFrontFont.load().catch(() => {});
 
+    // Fantasy reskin: the UI font (styles.css overrides --font-sans to it under
+    // [data-theme="fantasy"]). Loaded only when the flag is on so vanilla
+    // deployments don't fetch it.
+    if (ClientEnv.fantasyTheme()) {
+      const fantasyFont = new FontFace(
+        "EB Garamond",
+        `url(${assetUrl("fonts/eb-garamond.woff2")})`,
+      );
+      document.fonts.add(fantasyFont);
+      fantasyFont.load().catch(() => {});
+    }
+
     const versionElements = document.querySelectorAll(
       "#game-version, .game-version-display",
     );
