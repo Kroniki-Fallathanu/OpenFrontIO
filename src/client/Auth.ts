@@ -4,6 +4,7 @@ import { z } from "zod";
 import { TokenPayload, TokenPayloadSchema } from "../core/ApiSchemas";
 import { base64urlToUuid } from "../core/Base64";
 import { getApiBase, getAudience } from "./Api";
+import { ClientEnv } from "./ClientEnv";
 import { generateCryptoRandomUUID } from "./Utils";
 
 export type UserAuth = { jwt: string; claims: TokenPayload } | false;
@@ -77,6 +78,9 @@ export async function isLoggedIn(): Promise<boolean> {
 export async function userAuth(
   shouldRefresh: boolean = true,
 ): Promise<UserAuth> {
+  if (ClientEnv.externalApiDisabled()) {
+    return false;
+  }
   try {
     const jwt = __jwt;
     if (!jwt) {
@@ -154,6 +158,10 @@ async function refreshJwt(): Promise<void> {
 }
 
 async function doRefreshJwt(): Promise<void> {
+  if (ClientEnv.externalApiDisabled()) {
+    __jwt = null;
+    return;
+  }
   try {
     console.log("Refreshing jwt");
     const response = await fetch(getApiBase() + "/auth/refresh", {

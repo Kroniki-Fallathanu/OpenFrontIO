@@ -12,6 +12,7 @@ import {
 } from "../core/ApiSchemas";
 import { AnalyticsRecord, AnalyticsRecordSchema } from "../core/Schemas";
 import { getAuthHeader, logOut, userAuth } from "./Auth";
+import { ClientEnv } from "./ClientEnv";
 
 export async function fetchPlayerById(
   playerId: string,
@@ -368,6 +369,9 @@ export async function fetchPlayerLeaderboard(
 }
 
 export async function getNews(): Promise<NewsItem[]> {
+  if (ClientEnv.externalApiDisabled()) {
+    return newsItemsFallback as NewsItem[];
+  }
   try {
     const res = await fetch(`${getApiBase()}/news.json`, {
       headers: { Accept: "application/json" },

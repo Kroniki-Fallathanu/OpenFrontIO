@@ -32,6 +32,43 @@ describe("ServerEnv.numWorkers", () => {
   });
 });
 
+describe("ServerEnv.externalApiDisabled", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test("returns true when env is 'true'", () => {
+    vi.stubEnv("EXTERNAL_API_DISABLED", "true");
+    expect(ServerEnv.externalApiDisabled()).toBe(true);
+  });
+
+  test("returns false when unset", () => {
+    vi.stubEnv("EXTERNAL_API_DISABLED", "");
+    expect(ServerEnv.externalApiDisabled()).toBe(false);
+  });
+
+  test("returns false for other values", () => {
+    vi.stubEnv("EXTERNAL_API_DISABLED", "1");
+    expect(ServerEnv.externalApiDisabled()).toBe(false);
+  });
+});
+
+describe("ServerEnv.publicLobbiesDisabled", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test("returns true when env is 'true'", () => {
+    vi.stubEnv("PUBLIC_LOBBIES_DISABLED", "true");
+    expect(ServerEnv.publicLobbiesDisabled()).toBe(true);
+  });
+
+  test("returns false when unset", () => {
+    vi.stubEnv("PUBLIC_LOBBIES_DISABLED", "");
+    expect(ServerEnv.publicLobbiesDisabled()).toBe(false);
+  });
+});
+
 describe("ServerEnv.turnstileSiteKey", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
