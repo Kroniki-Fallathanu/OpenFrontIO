@@ -28,11 +28,16 @@ import type { RenderSettings } from "../RenderSettings";
 import { getPaletteSize } from "../utils/ColorUtils";
 import { createProgram, shaderSrc } from "../utils/GlUtils";
 
+import { ClientEnv } from "src/client/ClientEnv";
 import { assetUrl } from "src/core/AssetUrls";
 import structureFragSrc from "../shaders/structure/structure.frag.glsl?raw";
 import structureVertSrc from "../shaders/structure/structure.vert.glsl?raw";
 
-const iconAtlasUrl = assetUrl("atlases/icon-atlas.png");
+// Fantasy reskin swaps the structure glyph atlas (keep/anchor/anvil/shield/
+// crossed-arrows/wizard-hat) for the default modern icons.
+const iconAtlasUrl = ClientEnv.fantasyTheme()
+  ? assetUrl("atlases/icon-atlas-fantasy.png")
+  : assetUrl("atlases/icon-atlas.png");
 
 // ---------------------------------------------------------------------------
 // Constants
