@@ -35,6 +35,7 @@ declare global {
       instanceId?: string;
       externalApiDisabled?: boolean;
       fantasyTheme?: boolean;
+      adsDisabled?: boolean;
     };
   }
 }

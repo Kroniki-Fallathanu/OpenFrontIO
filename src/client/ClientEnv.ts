@@ -44,6 +44,7 @@ export class ClientEnv {
       gitCommit: bc.gitCommit,
       externalApiDisabled: bc.externalApiDisabled ?? false,
       fantasyTheme: bc.fantasyTheme ?? false,
+      adsDisabled: bc.adsDisabled ?? false,
     };
     return ClientEnv.values;
   }
@@ -83,6 +84,14 @@ export class ClientEnv {
     // Fail-safe like externalApiDisabled: missing config means vanilla theme.
     try {
       return ClientEnv.get().fantasyTheme;
+    } catch {
+      return false;
+    }
+  }
+  static adsDisabled(): boolean {
+    // Fail-safe: missing config means vanilla (ads-enabled) behavior.
+    try {
+      return ClientEnv.get().adsDisabled;
     } catch {
       return false;
     }
@@ -138,4 +147,5 @@ export interface ClientEnvValues {
   gitCommit: string;
   externalApiDisabled: boolean;
   fantasyTheme: boolean;
+  adsDisabled: boolean;
 }
