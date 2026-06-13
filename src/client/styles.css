@@ -53,8 +53,8 @@ html[data-theme="fantasy"] {
   --color-aquarius: #e0b84d;
   --color-hex-cyan: #d4af37;
   --color-frame-orange: #c75a14;
-  --color-deep-navy: #120a22;
-  --color-surface: #120a22;
+  --color-deep-navy: #1b1b1e;
+  --color-surface: #1b1b1e;
 
   --shadow-malibu-blue: 0 0 15px rgba(184, 134, 11, 0.25);
   --shadow-malibu-blue-soft: 0 0 12px rgba(184, 134, 11, 0.25);

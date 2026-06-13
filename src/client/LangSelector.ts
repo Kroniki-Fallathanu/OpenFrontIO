@@ -1,6 +1,8 @@
 import { LitElement, html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { assetUrl } from "../core/AssetUrls";
+import { ClientEnv } from "./ClientEnv";
+import { fantasyTextOverride, plSupplementOverride } from "./FantasyText";
 import "./LanguageModal";
 import { LanguageModal } from "./LanguageModal";
 import { formatDebugTranslation } from "./Utils";
@@ -87,7 +89,11 @@ export class LangSelector extends LitElement {
   private async initializeLanguage() {
     const browserLocale = navigator.language;
     const savedLang = localStorage.getItem("lang");
-    const userLang = this.getClosestSupportedLang(savedLang ?? browserLocale);
+    // Fantasy (Hexah) deployment defaults to Polish regardless of browser
+    // locale; an explicit in-game language choice still wins.
+    const fallbackLocale =
+      ClientEnv.fantasyTheme() && !savedLang ? "pl" : browserLocale;
+    const userLang = this.getClosestSupportedLang(savedLang ?? fallbackLocale);
 
     const [defaultTranslations, translations] = await Promise.all([
       this.loadLanguage("en"),
@@ -290,12 +296,10 @@ export class LangSelector extends LitElement {
       return formatDebugTranslation(key, params);
     }
 
-    let text: string | undefined;
-    if (this.translations && key in this.translations) {
-      text = this.translations[key];
-    } else if (this.defaultTranslations && key in this.defaultTranslations) {
-      text = this.defaultTranslations[key];
-    } else {
+    let text: string | undefined =
+      fantasyTextOverride(key) ?? this.translations?.[key];
+    text ??= plSupplementOverride(key) ?? this.defaultTranslations?.[key];
+    if (text === undefined) {
       console.warn(`Translation key not found: ${key}`);
       return key;
     }
