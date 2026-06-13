@@ -11,7 +11,7 @@ import {
   Trios,
 } from "../core/game/Game";
 import { GameConfig } from "../core/Schemas";
-import { fantasyTextOverride } from "./FantasyText";
+import { fantasyTextOverride, plSupplementOverride } from "./FantasyText";
 import type { LangSelector } from "./LangSelector";
 import { Platform } from "./Platform";
 
@@ -451,7 +451,10 @@ export const translateText = (
     self.lastLang = langSelector.currentLang;
   }
 
-  let message = fantasyTextOverride(key) ?? translations?.[key];
+  let message =
+    fantasyTextOverride(key) ??
+    translations?.[key] ??
+    plSupplementOverride(key);
   const hasPrimaryTranslation = message !== undefined;
 
   message ??= defaultTranslations?.[key];
