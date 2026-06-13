@@ -42,6 +42,7 @@ export class ClientEnv {
       jwtAudience: bc.jwtAudience,
       instanceId: bc.instanceId,
       gitCommit: bc.gitCommit,
+      externalApiDisabled: bc.externalApiDisabled ?? false,
     };
     return ClientEnv.values;
   }
@@ -67,6 +68,15 @@ export class ClientEnv {
   }
   static gitCommit(): string {
     return ClientEnv.get().gitCommit;
+  }
+  static externalApiDisabled(): boolean {
+    // Fail-safe: callers run in contexts without BOOTSTRAP_CONFIG (tests,
+    // legacy app shells) — missing config means vanilla behavior, not a crash.
+    try {
+      return ClientEnv.get().externalApiDisabled;
+    } catch {
+      return false;
+    }
   }
   static jwtIssuer(): string {
     const audience = ClientEnv.jwtAudience();
@@ -117,4 +127,5 @@ export interface ClientEnvValues {
   jwtAudience: string;
   instanceId: string;
   gitCommit: string;
+  externalApiDisabled: boolean;
 }

@@ -25,6 +25,7 @@ import {
   invalidateUserMe,
   purchaseWithCurrency,
 } from "./Api";
+import { ClientEnv } from "./ClientEnv";
 import { translateText } from "./Utils";
 
 export const TEMP_FLARE_OFFSET = 1 * 60 * 1000; // 1 minute
@@ -183,6 +184,9 @@ function simpleHash(str: string): string {
 }
 
 export async function fetchCosmetics(): Promise<Cosmetics | null> {
+  if (ClientEnv.externalApiDisabled()) {
+    return null;
+  }
   if (__cosmetics !== null) {
     return __cosmetics;
   }

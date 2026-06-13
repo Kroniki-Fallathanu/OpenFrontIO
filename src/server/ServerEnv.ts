@@ -52,6 +52,14 @@ export class ServerEnv {
     }
     return n;
   }
+  // Self-hosted deployments have no openfront-api service; these flags stop
+  // the server from polling it and from auto-scheduling public lobbies.
+  static externalApiDisabled(): boolean {
+    return process.env.EXTERNAL_API_DISABLED === "true";
+  }
+  static publicLobbiesDisabled(): boolean {
+    return process.env.PUBLIC_LOBBIES_DISABLED === "true";
+  }
   static turnstileSiteKey(): string {
     const v = process.env.TURNSTILE_SITE_KEY;
     if (!v) {
