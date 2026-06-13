@@ -1,6 +1,7 @@
 import { html, LitElement, TemplateResult } from "lit";
 import { customElement } from "lit/decorators.js";
 import { assetUrl } from "../../core/AssetUrls";
+import { ClientEnv } from "../ClientEnv";
 import { NavNotificationsController } from "./NavNotificationsController";
 
 @customElement("mobile-nav-bar")
@@ -77,8 +78,10 @@ export class MobileNavBar extends LitElement {
         >
           <div class="flex flex-col items-center gap-1">
             <img
-              src=${assetUrl("images/OpenFrontLogo.svg")}
-              alt="OpenFront"
+              src=${ClientEnv.fantasyTheme()
+                ? assetUrl("images/hexah-logo.png")
+                : assetUrl("images/OpenFrontLogo.svg")}
+              alt=${ClientEnv.fantasyTheme() ? "Hexah" : "OpenFront"}
               class="w-auto h-auto max-w-[220px] max-h-[4.5rem]"
             />
             <div

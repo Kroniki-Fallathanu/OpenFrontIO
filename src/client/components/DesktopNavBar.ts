@@ -1,6 +1,7 @@
 import { LitElement, html } from "lit";
 import { customElement } from "lit/decorators.js";
 import { assetUrl } from "../../core/AssetUrls";
+import { ClientEnv } from "../ClientEnv";
 import { NavNotificationsController } from "./NavNotificationsController";
 
 @customElement("desktop-nav-bar")
@@ -55,9 +56,13 @@ export class DesktopNavBar extends LitElement {
         <div class="flex flex-col items-center justify-center">
           <div class="h-8">
             <img
-              class="block h-full aspect-[1364/259]"
-              src=${assetUrl("images/OpenFrontLogo.svg")}
-              alt="OpenFront"
+              class="block h-full ${ClientEnv.fantasyTheme()
+                ? "aspect-[10/3]"
+                : "aspect-[1364/259]"}"
+              src=${ClientEnv.fantasyTheme()
+                ? assetUrl("images/hexah-logo.png")
+                : assetUrl("images/OpenFrontLogo.svg")}
+              alt=${ClientEnv.fantasyTheme() ? "Hexah" : "OpenFront"}
             />
           </div>
           <div
