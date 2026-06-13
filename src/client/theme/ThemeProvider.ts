@@ -2,6 +2,7 @@ import { Colord, colord, LabaColor } from "colord";
 import { PlayerType, Team } from "../../core/game/Game";
 import { UserSettings } from "../../core/game/UserSettings";
 import { simpleHash } from "../../core/Util";
+import { ClientEnv } from "../ClientEnv";
 import {
   createThemeSettings,
   ThemeSettings,
@@ -261,11 +262,18 @@ class ThemeProvider {
   private readonly userSettings = new UserSettings();
   private defaultTheme = new SettingsTheme(createThemeSettings("default"));
   private colorblind = new SettingsTheme(createThemeSettings("colorblind"));
+  private fantasy = new SettingsTheme(createThemeSettings("fantasy"));
 
-  /** The active theme, selected from the colorblind-mode preference. */
+  /**
+   * The active theme. Colorblind mode (an accessibility need) wins over the
+   * fantasy reskin; the fantasy theme is selected by the FANTASY_THEME env flag.
+   */
   current(): Theme {
     if (this.userSettings.graphicsOverrides().accessibility?.colorblind) {
       return this.colorblind;
+    }
+    if (ClientEnv.fantasyTheme()) {
+      return this.fantasy;
     }
     return this.defaultTheme;
   }
@@ -278,6 +286,7 @@ class ThemeProvider {
   reset(): void {
     this.defaultTheme = new SettingsTheme(createThemeSettings("default"));
     this.colorblind = new SettingsTheme(createThemeSettings("colorblind"));
+    this.fantasy = new SettingsTheme(createThemeSettings("fantasy"));
   }
 }
 

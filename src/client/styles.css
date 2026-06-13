@@ -37,6 +37,32 @@
     0 0 0 1px #0084d1, 0 0 12px rgba(0, 132, 209, 0.35);
 }
 
+/*
+ * Dark-fantasy reskin (FANTASY_THEME env flag → <html data-theme="fantasy">).
+ * Repaints the brand-accent tokens from OpenFront's signature blue to regal
+ * gold/amethyst; everything that uses var(--color-malibu-blue) (buttons,
+ * rings, glows) follows automatically. Higher specificity than @theme's :root.
+ */
+html[data-theme="fantasy"] {
+  --color-malibu-blue: #b8860b;
+  --color-aquarius: #e0b84d;
+  --color-hex-cyan: #d4af37;
+  --color-frame-orange: #c75a14;
+  --color-deep-navy: #120a22;
+  --color-surface: #120a22;
+
+  --shadow-malibu-blue: 0 0 15px rgba(184, 134, 11, 0.25);
+  --shadow-malibu-blue-soft: 0 0 12px rgba(184, 134, 11, 0.25);
+  --shadow-malibu-blue-strong: 0 0 15px rgba(184, 134, 11, 0.35);
+  --shadow-malibu-blue-pill: 0 0 6px rgba(184, 134, 11, 0.4);
+  --shadow-malibu-blue-ring-sm: 0 0 0 4px rgba(184, 134, 11, 0.25);
+  --shadow-malibu-blue-ring-lg: 0 0 0 6px rgba(184, 134, 11, 0.35);
+  --shadow-lobby-card-hover:
+    0 0 0 2px #b8860b, 0 0 20px rgba(184, 134, 11, 0.5);
+  --shadow-action-card-hover:
+    0 0 0 1px #b8860b, 0 0 12px rgba(184, 134, 11, 0.4);
+}
+
 @layer base {
   *,
   ::after,

@@ -60,6 +60,16 @@ export class ServerEnv {
   static publicLobbiesDisabled(): boolean {
     return process.env.PUBLIC_LOBBIES_DISABLED === "true";
   }
+  // Strips ad/tracking scripts from the served index.html (forwarded to the
+  // EJS template). Independent of the fantasy reskin below.
+  static adsDisabled(): boolean {
+    return process.env.ADS_DISABLED === "true";
+  }
+  // Selects the dark-fantasy reskin (game colors, terrain palette, UI accents).
+  // Forwarded to the client via BOOTSTRAP_CONFIG.
+  static fantasyTheme(): boolean {
+    return process.env.FANTASY_THEME === "true";
+  }
   static turnstileSiteKey(): string {
     const v = process.env.TURNSTILE_SITE_KEY;
     if (!v) {

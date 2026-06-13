@@ -8,6 +8,7 @@
  * so each terrain cell stays pixel-crisp at every zoom level.
  */
 
+import { ClientEnv } from "../../../ClientEnv";
 import terrainFragSrc from "../shaders/terrain/terrain.frag.glsl?raw";
 import terrainVertSrc from "../shaders/terrain/terrain.vert.glsl?raw";
 import { encodeTerrainTile } from "../utils/ColorUtils";
@@ -30,6 +31,8 @@ export class TerrainPass {
   private mapW: number;
   // Scratch buffer for 1×1 sub-uploads; reused across applyTerrainDelta calls.
   private readonly pixelScratch = new Uint8Array(4);
+  // Read once; live tile updates must match the palette of the initial upload.
+  private readonly fantasy = ClientEnv.fantasyTheme();
 
   constructor(
     private gl: WebGL2RenderingContext,
@@ -73,7 +76,7 @@ export class TerrainPass {
       const ref = refs[i];
       const x = ref % this.mapW;
       const y = (ref - x) / this.mapW;
-      encodeTerrainTile(bytes[i], this.pixelScratch, 0);
+      encodeTerrainTile(bytes[i], this.pixelScratch, 0, this.fantasy);
       gl.texSubImage2D(
         gl.TEXTURE_2D,
         0,

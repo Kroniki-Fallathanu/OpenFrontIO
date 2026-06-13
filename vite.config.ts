@@ -72,6 +72,8 @@ export default defineConfig(({ mode }) => {
     jwtAudience: JSON.stringify(env.DOMAIN ?? "localhost"),
     instanceId: JSON.stringify(env.INSTANCE_ID ?? "DEV_ID"),
     externalApiDisabled: JSON.stringify(env.EXTERNAL_API_DISABLED === "true"),
+    adsDisabled: env.ADS_DISABLED === "true",
+    fantasyTheme: env.FANTASY_THEME === "true",
     manifestHref: buildAssetUrl("manifest.json", assetManifest, cdnBase),
     faviconHref: buildAssetUrl("images/Favicon.svg", assetManifest, cdnBase),
     gameplayScreenshotUrl: buildAssetUrl(

@@ -69,6 +69,38 @@ describe("ServerEnv.publicLobbiesDisabled", () => {
   });
 });
 
+describe("ServerEnv.adsDisabled", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test("returns true when env is 'true'", () => {
+    vi.stubEnv("ADS_DISABLED", "true");
+    expect(ServerEnv.adsDisabled()).toBe(true);
+  });
+
+  test("returns false when unset", () => {
+    vi.stubEnv("ADS_DISABLED", "");
+    expect(ServerEnv.adsDisabled()).toBe(false);
+  });
+});
+
+describe("ServerEnv.fantasyTheme", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test("returns true when env is 'true'", () => {
+    vi.stubEnv("FANTASY_THEME", "true");
+    expect(ServerEnv.fantasyTheme()).toBe(true);
+  });
+
+  test("returns false when unset", () => {
+    vi.stubEnv("FANTASY_THEME", "");
+    expect(ServerEnv.fantasyTheme()).toBe(false);
+  });
+});
+
 describe("ServerEnv.turnstileSiteKey", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
