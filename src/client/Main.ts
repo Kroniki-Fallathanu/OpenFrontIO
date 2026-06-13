@@ -500,7 +500,10 @@ class Client {
       updateAccountNavButton(userMeResponse);
       const isAdFree =
         userMeResponse !== false && userMeResponse.player?.adfree === true;
-      window.adsEnabled = !isAdFree && !crazyGamesSDK.isOnCrazyGames();
+      window.adsEnabled =
+        !isAdFree &&
+        !crazyGamesSDK.isOnCrazyGames() &&
+        !ClientEnv.adsDisabled();
       document.dispatchEvent(
         new CustomEvent("userMeResponse", {
           detail: userMeResponse,
