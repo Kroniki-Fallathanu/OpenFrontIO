@@ -44,6 +44,11 @@
  * rings, glows) follows automatically. Higher specificity than @theme's :root.
  */
 html[data-theme="fantasy"] {
+  /* "EB Garamond" loaded at runtime in Main.ts (FontFace API). Overriding the
+   * --font-sans token repaints the whole UI via the body's font-sans class,
+   * and inherits into the Lit components' shadow DOM. */
+  --font-sans: "EB Garamond", Georgia, "Times New Roman", serif;
+  --font-display: "EB Garamond", Georgia, serif;
   --color-malibu-blue: #b8860b;
   --color-aquarius: #e0b84d;
   --color-hex-cyan: #d4af37;
