@@ -82,7 +82,9 @@ export default defineConfig(({ mode }) => {
       cdnBase,
     ),
     backgroundImageUrl: buildAssetUrl(
-      "images/background.webp",
+      env.FANTASY_THEME === "true"
+        ? "images/hexah-bg.jpg"
+        : "images/background.webp",
       assetManifest,
       cdnBase,
     ),
