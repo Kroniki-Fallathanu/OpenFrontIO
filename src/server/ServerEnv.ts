@@ -60,6 +60,15 @@ export class ServerEnv {
   static publicLobbiesDisabled(): boolean {
     return process.env.PUBLIC_LOBBIES_DISABLED === "true";
   }
+  // Server→server result webhook (Hexah „Dzikie Ziemie"). When both are set,
+  // the game-end record is POSTed (HMAC-signed) to Strapi to resolve the
+  // bandit/wild battle. Empty = feature off (no-op), so vanilla is unaffected.
+  static resultWebhookUrl(): string {
+    return process.env.RESULT_WEBHOOK_URL ?? "";
+  }
+  static resultWebhookSecret(): string {
+    return process.env.RESULT_WEBHOOK_SECRET ?? "";
+  }
   // Strips ad/tracking scripts from the served index.html (forwarded to the
   // EJS template). Independent of the fantasy reskin below.
   static adsDisabled(): boolean {

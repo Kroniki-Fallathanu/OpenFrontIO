@@ -26,6 +26,7 @@ import {
 } from "../core/Schemas";
 import { createPartialGameRecord } from "../core/Util";
 import { archive, finalizeGameRecord } from "./Archive";
+import { emitWildBattleResult } from "./WildBattleWebhook";
 import { Client } from "./Client";
 import { ClientMsgRateLimiter } from "./ClientMsgRateLimiter";
 import { ServerEnv } from "./ServerEnv";
@@ -1106,21 +1107,23 @@ export class GameServer {
         } satisfies PlayerRecord;
       },
     );
-    archive(
-      finalizeGameRecord(
-        createPartialGameRecord(
-          this.id,
-          this.gameStartInfo.config,
-          playerRecords,
-          this.turns,
-          this._startTime ?? 0,
-          Date.now(),
-          this.winner?.winner,
-          this.createdAt,
-          this.visibleAt,
-        ),
+    const gameRecord = finalizeGameRecord(
+      createPartialGameRecord(
+        this.id,
+        this.gameStartInfo.config,
+        playerRecords,
+        this.turns,
+        this._startTime ?? 0,
+        Date.now(),
+        this.winner?.winner,
+        this.createdAt,
+        this.visibleAt,
       ),
     );
+    archive(gameRecord);
+    // Hexah „Dzikie Ziemie": notify Strapi of the result (S2S, HMAC; no-op
+    // unless RESULT_WEBHOOK_* env is set).
+    emitWildBattleResult(gameRecord);
   }
 
   private handleSynchronization() {
