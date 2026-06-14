@@ -11,6 +11,27 @@ export type UserAuth = { jwt: string; claims: TokenPayload } | false;
 
 const PERSISTENT_ID_KEY = "player_persistent_id";
 
+// Embedded Hexah „Dzikie Ziemie" battles open this game in an iframe and pass a
+// per-battle, single-use persistentID in the URL hash (#hexPid=<uuid>). The
+// embedded player must present it so they are recognized as the game's creator
+// (the result webhook matches the winner against it). It is generated per battle
+// by Hexah — NOT the player's real OpenFront identity — and is never written to
+// localStorage, so it cannot clobber a standalone visitor's id.
+const BATTLE_PID_HASH_PARAM = "hexPid";
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function battlePersistentIdOverride(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const hash = window.location.hash.replace(/^#/, "");
+    const pid = new URLSearchParams(hash).get(BATTLE_PID_HASH_PARAM);
+    return pid && UUID_REGEX.test(pid) ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
 let __jwt: string | null = null;
 let __refreshPromise: Promise<void> | null = null;
 let __expiresAt: number = 0;
@@ -219,6 +240,8 @@ export async function sendMagicLink(email: string): Promise<boolean> {
 
 // WARNING: DO NOT EXPOSE THIS ID
 export async function getPlayToken(): Promise<string> {
+  const battlePid = battlePersistentIdOverride();
+  if (battlePid) return battlePid;
   const result = await userAuth();
   if (result !== false) return result.jwt;
   return getPersistentIDFromLocalStorage();
@@ -226,6 +249,8 @@ export async function getPlayToken(): Promise<string> {
 
 // WARNING: DO NOT EXPOSE THIS ID
 export function getPersistentID(): string {
+  const battlePid = battlePersistentIdOverride();
+  if (battlePid) return battlePid;
   const jwt = __jwt;
   if (!jwt) return getPersistentIDFromLocalStorage();
   const payload = decodeJwt(jwt);
