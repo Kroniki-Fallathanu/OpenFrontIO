@@ -11,6 +11,7 @@ import {
   UnitType,
 } from "../../../core/game/Game";
 import { TileRef } from "../../../core/game/GameMap";
+import { ClientEnv } from "../../ClientEnv";
 import { Controller } from "../../Controller";
 import {
   CloseViewEvent,
@@ -37,6 +38,20 @@ const atomBombIcon = assetUrl("images/NukeIconWhite.svg");
 const portIcon = assetUrl("images/PortIcon.svg");
 const samlauncherIcon = assetUrl("images/SamLauncherIconWhite.svg");
 const shieldIcon = assetUrl("images/ShieldIconWhite.svg");
+
+// Fantasy reskin: build-menu structure icons reuse the same glyph atlas as the
+// map (StructurePass). Column indices MUST match STRUCTURE_ORDER there so the
+// menu shows the same glyph (keep/anchor/anvil/shield/…) as the placed building.
+const fantasyStructureAtlas = assetUrl("atlases/icon-atlas-fantasy.png");
+const FANTASY_ATLAS_COLS = 6;
+const FANTASY_ATLAS_COL: Partial<Record<UnitType, number>> = {
+  [UnitType.City]: 0,
+  [UnitType.Port]: 1,
+  [UnitType.Factory]: 2,
+  [UnitType.DefensePost]: 3,
+  [UnitType.SAMLauncher]: 4,
+  [UnitType.MissileSilo]: 5,
+};
 
 export interface BuildItemDisplay {
   unitType: PlayerBuildableUnitType;
@@ -230,6 +245,16 @@ export class BuildMenu extends LitElement implements Controller {
     .build-button:disabled img {
       opacity: 0.5;
     }
+    .build-icon-sprite {
+      display: inline-block;
+      width: 40px;
+      height: 40px;
+      background-repeat: no-repeat;
+      background-size: 600% 100%;
+    }
+    .build-button:disabled .build-icon-sprite {
+      opacity: 0.5;
+    }
     .build-button:disabled .build-cost {
       color: #ff4444;
     }
@@ -346,6 +371,10 @@ export class BuildMenu extends LitElement implements Controller {
         width: 24px;
         height: 24px;
       }
+      .build-button .build-icon-sprite {
+        width: 24px;
+        height: 24px;
+      }
       .build-cost img {
         width: 10px;
         height: 10px;
@@ -403,6 +432,28 @@ export class BuildMenu extends LitElement implements Controller {
     this.hideMenu();
   }
 
+  // Fantasy: structures use the map glyph atlas (percentage background-position is
+  // size-independent, so it stays aligned at the responsive 24px size too).
+  // Everything else keeps its original icon.
+  private renderBuildIcon(item: BuildItemDisplay) {
+    const col = FANTASY_ATLAS_COL[item.unitType];
+    if (ClientEnv.fantasyTheme() && col !== undefined) {
+      const posX = (col / (FANTASY_ATLAS_COLS - 1)) * 100;
+      return html`<span
+        class="build-icon-sprite"
+        role="img"
+        aria-label=${item.unitType}
+        style="background-image:url(${fantasyStructureAtlas});background-position:${posX}% 0;"
+      ></span>`;
+    }
+    return html`<img
+      src=${item.icon}
+      alt="${item.unitType}"
+      width="40"
+      height="40"
+    />`;
+  }
+
   render() {
     return html`
       <div
@@ -432,12 +483,7 @@ export class BuildMenu extends LitElement implements Controller {
                       ? translateText("build_menu.not_enough_money")
                       : ""}
                   >
-                    <img
-                      src=${item.icon}
-                      alt="${item.unitType}"
-                      width="40"
-                      height="40"
-                    />
+                    ${this.renderBuildIcon(item)}
                     <span class="build-name"
                       >${item.key && translateText(item.key)}</span
                     >
