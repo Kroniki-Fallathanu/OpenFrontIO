@@ -150,8 +150,20 @@ export async function startWorker() {
     // Extract persistentID from Authorization header token
     // Never accept persistentID directly from client
     let creatorPersistentID: string | undefined;
+    // Trusted server→server caller (Hexah „Dzikie Ziemie"): a shared internal
+    // key replaces the player JWT, which is unavailable when the external API
+    // is disabled. The creator persistentID is passed explicitly by the caller.
+    const internalKey = ServerEnv.internalApiKey();
+    const isInternal =
+      internalKey.length > 0 &&
+      req.headers["x-internal-key"] === internalKey;
     const authHeader = req.headers.authorization;
-    if (authHeader?.startsWith("Bearer ")) {
+    if (isInternal) {
+      const pid = req.headers["x-creator-persistent-id"];
+      if (typeof pid === "string" && pid.length > 0) {
+        creatorPersistentID = pid;
+      }
+    } else if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.substring("Bearer ".length);
       const result = await verifyClientToken(token);
       if (result.type === "success") {
@@ -183,6 +195,7 @@ export async function startWorker() {
     const gc = result.data;
     if (
       gc?.gameType === GameType.Public &&
+      !isInternal &&
       req.headers[ServerEnv.adminHeader()] !== ServerEnv.adminToken()
     ) {
       log.warn(

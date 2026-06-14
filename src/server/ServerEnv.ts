@@ -69,6 +69,12 @@ export class ServerEnv {
   static resultWebhookSecret(): string {
     return process.env.RESULT_WEBHOOK_SECRET ?? "";
   }
+  // Shared secret authorizing trusted server→server calls (e.g. Hexah Strapi
+  // creating a wild battle via /api/create_game) without a player JWT. Empty =
+  // disabled, so vanilla deployments keep the normal Bearer/admin-token auth.
+  static internalApiKey(): string {
+    return process.env.INTERNAL_API_KEY ?? "";
+  }
   // Strips ad/tracking scripts from the served index.html (forwarded to the
   // EJS template). Independent of the fantasy reskin below.
   static adsDisabled(): boolean {
