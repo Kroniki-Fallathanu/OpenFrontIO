@@ -69,6 +69,22 @@ describe("ServerEnv.publicLobbiesDisabled", () => {
   });
 });
 
+describe("ServerEnv.internalApiKey", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test("returns value when set", () => {
+    vi.stubEnv("INTERNAL_API_KEY", "s2s-secret");
+    expect(ServerEnv.internalApiKey()).toBe("s2s-secret");
+  });
+
+  test("returns empty string when unset", () => {
+    vi.stubEnv("INTERNAL_API_KEY", "");
+    expect(ServerEnv.internalApiKey()).toBe("");
+  });
+});
+
 describe("ServerEnv.adsDisabled", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
