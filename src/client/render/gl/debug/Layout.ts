@@ -214,7 +214,7 @@ export function buildTree(s: RenderSettings, d: RenderSettings): DebugNode[] {
     ]),
 
     folder("Structure", [
-      slider(s.structure, "iconSize", d.structure, 10, 60, 1),
+      slider(s.structure, "iconSize", d.structure, 10, 100, 1),
       slider(s.structure, "dotsZoomThreshold", d.structure, 0.1, 2, 0.05),
       slider(
         s.structure,
@@ -266,6 +266,36 @@ export function buildTree(s: RenderSettings, d: RenderSettings): DebugNode[] {
             ),
           ]),
         ),
+      ),
+    ]),
+
+    folder("Structure Level", [
+      slider(
+        s.structureLevel,
+        "scale",
+        d.structureLevel,
+        0.5,
+        3,
+        0.05,
+        "Scale",
+      ),
+      slider(
+        s.structureLevel,
+        "outlineWidth",
+        d.structureLevel,
+        0,
+        20,
+        0.1,
+        "Outline Width (px)",
+      ),
+      slider(
+        s.structureLevel,
+        "offsetY",
+        d.structureLevel,
+        -2,
+        2,
+        0.05,
+        "Height Above Icon",
       ),
     ]),
 
@@ -325,6 +355,15 @@ export function buildTree(s: RenderSettings, d: RenderSettings): DebugNode[] {
       toggle(s.name, "fillUsePlayerColor", d.name, "Fill = Player Color"),
       slider(s.name, "emojiRowOffset", d.name, 0, 5, 0.1, "Emoji Row Offset"),
       slider(s.name, "statusRowOffset", d.name, 0, 5, 0.1, "Status Row Offset"),
+      slider(
+        s.name,
+        "statusOutlineWidth",
+        d.name,
+        0,
+        16,
+        0.5,
+        "Status Outline Width",
+      ),
       slider(s.name, "hoverFadeAlpha", d.name, 0, 1, 0.05, "Hover Fade Alpha"),
       slider(s.name, "hoverGlowWidth", d.name, 0, 8, 0.25, "Hover Glow Width"),
       slider(s.name, "hoverGlowAlpha", d.name, 0, 1, 0.05, "Hover Glow Alpha"),

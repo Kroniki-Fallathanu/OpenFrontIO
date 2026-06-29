@@ -95,6 +95,10 @@ export class GameImpl implements Game {
 
   private updates: GameUpdates = createGameUpdatesMap();
   private tileUpdatePairs: number[] = [];
+  /** [smallID, tilesOwned, gold, troops] quads — see PlayerImpl.toUpdate. */
+  private playerStatsQuads: number[] = [];
+  /** [smallID, direction, index, troops] quads — see packAttackTroopDeltas. */
+  private attackTroopsQuads: number[] = [];
   private motionPlanRecords: MotionPlanRecord[] = [];
   private planDrivenUnitIds = new Set<number>();
   private unitGrid: UnitGrid;
@@ -451,7 +455,10 @@ export class GameImpl implements Game {
     this.execs.push(...inited);
     this.unInitExecs = unInited;
     for (const player of this._players.values()) {
-      const update = player.toUpdate();
+      const update = player.toUpdate(
+        this.playerStatsQuads,
+        this.attackTroopsQuads,
+      );
       if (update !== null) this.addUpdate(update);
     }
     if (this.ticks() % 10 === 0) {
@@ -486,6 +493,22 @@ export class GameImpl implements Game {
       packed[i] = pairs[i];
     }
     pairs.length = 0;
+    return packed;
+  }
+
+  drainPackedPlayerUpdates(): Float64Array | null {
+    const quads = this.playerStatsQuads;
+    if (quads.length === 0) return null;
+    const packed = Float64Array.from(quads);
+    quads.length = 0;
+    return packed;
+  }
+
+  drainPackedAttackUpdates(): Float64Array | null {
+    const quads = this.attackTroopsQuads;
+    if (quads.length === 0) return null;
+    const packed = Float64Array.from(quads);
+    quads.length = 0;
     return packed;
   }
 
@@ -671,6 +694,9 @@ export class GameImpl implements Game {
     if (!this.isLand(tile)) {
       throw Error(`cannot conquer water`);
     }
+    if (this.isImpassable(tile)) {
+      throw Error(`cannot conquer impassable terrain`);
+    }
     const previousOwner = this.owner(tile) as TerraNullius | PlayerImpl;
     if (previousOwner.isPlayer()) {
       previousOwner._lastTileChange = this._ticks;
@@ -828,6 +854,10 @@ export class GameImpl implements Game {
 
   setWinner(winner: Player | Team, allPlayersStats: AllPlayersStats): void {
     this._winner = winner;
+    // OFM: snapshot final tiles for standings (bots skipped in recordFinalTiles).
+    for (const player of this.players()) {
+      this.stats().recordFinalTiles(player, player.numTilesOwned());
+    }
     this.addUpdate({
       type: GameUpdateType.Win,
       winner: this.makeWinner(winner),
@@ -1052,6 +1082,9 @@ export class GameImpl implements Game {
   isLand(ref: TileRef): boolean {
     return this._map.isLand(ref);
   }
+  isImpassable(ref: TileRef): boolean {
+    return this._map.isImpassable(ref);
+  }
   isOceanShore(ref: TileRef): boolean {
     return this._map.isOceanShore(ref);
   }
@@ -1171,6 +1204,9 @@ export class GameImpl implements Game {
   hasWaterComponent(tile: TileRef, component: number): boolean {
     return this._waterManager.hasWaterComponent(tile, component);
   }
+  getWaterComponentSize(tile: TileRef): number | null {
+    return this._waterManager.getWaterComponentSize(tile);
+  }
   sharedWaterComponents(player: Player): Set<number> | null {
     return this._sharedWaterCache.get(player);
   }
@@ -1227,6 +1263,9 @@ export class GameImpl implements Game {
       // Record stats
       this.stats().goldWar(conqueror, conquered, goldCaptured);
     }
+
+    // OFM: per-kill log for standings (humans-only filtered in recordKill).
+    this.stats().recordKill(conqueror, conquered, this.ticks());
 
     this.addUpdate({
       type: GameUpdateType.ConquestEvent,

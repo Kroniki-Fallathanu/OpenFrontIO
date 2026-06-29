@@ -57,9 +57,10 @@ import { TerritoryPass } from "./passes/TerritoryPass";
 import { TrailPass } from "./passes/TrailPass";
 import { UnitPass } from "./passes/UnitPass";
 import { WorldTextPass } from "./passes/WorldTextPass";
-import { createRenderSettings, type RenderSettings } from "./RenderSettings";
+import type { RenderSettings } from "./RenderSettings";
 import { AffiliationPalette } from "./utils/Affiliation";
-import { buildTerrainRGBA, getPaletteSize } from "./utils/ColorUtils";
+import { getPaletteSize, hexToRgb } from "./utils/ColorUtils";
+import { renderDpr } from "./utils/Dpr";
 import {
   createTexture2D,
   toScreen,
@@ -180,11 +181,15 @@ export class GPURenderer {
     terrainBytes: Uint8Array,
     paletteData: Float32Array,
     config: Config,
+    settings: RenderSettings,
     raf: typeof requestAnimationFrame = requestAnimationFrame.bind(window),
     caf: typeof cancelAnimationFrame = cancelAnimationFrame.bind(window),
   ) {
     this.canvas = canvas;
-    this.settings = createRenderSettings();
+    // Settings are resolved (defaults + user overrides) by the caller and
+    // passed in, so every pass — including texture-baking ones like terrain —
+    // is built with the final values. Live changes mutate this object in place.
+    this.settings = settings;
     this.raf = raf;
     this.caf = caf;
 
@@ -209,8 +214,13 @@ export class GPURenderer {
     this.camera = new Camera(mapW, mapH);
 
     // --- Terrain (static) ---
-    const terrainRGBA = buildTerrainRGBA(terrainBytes, mapW, mapH);
-    this.terrainPass = new TerrainPass(gl, terrainRGBA, mapW, mapH);
+    this.terrainPass = new TerrainPass(gl, terrainBytes, mapW, mapH, {
+      oceanColor: hexToRgb(this.settings.terrain.oceanColor) ?? undefined,
+      sandColor: hexToRgb(this.settings.terrain.sandColor) ?? undefined,
+      plainsColor: hexToRgb(this.settings.terrain.plainsColor) ?? undefined,
+      highlandColor: hexToRgb(this.settings.terrain.highlandColor) ?? undefined,
+      mountainColor: hexToRgb(this.settings.terrain.mountainColor) ?? undefined,
+    });
 
     // --- Shared palette texture (RGBA32F, 4096×2) ---
     this.paletteData = paletteData;
@@ -341,8 +351,8 @@ export class GPURenderer {
     // just the affected tiles instead of rebuilding the whole map. A tile
     // changing owner can also flip its defense-coverage flag (same-owner test),
     // so mark the coverage stale too — one coalesced re-stamp happens per frame.
-    this.territoryPass.setBorderPatchConsumer((x, y) => {
-      this.borderPass.patchTile(x, y);
+    this.territoryPass.setBorderPatchConsumer((x, y, prevOwner, newOwner) => {
+      this.borderPass.patchTile(x, y, prevOwner, newOwner);
       this.defenseCoveragePass.markTileDirty(x, y);
     });
     // Territory fill darkens on interior tiles defended by a same-owner post;
@@ -401,6 +411,7 @@ export class GPURenderer {
       header,
       paletteData,
       this.settings,
+      config,
     );
 
     // --- Fallout light (needs tileTex + heatManager; particle flicker is
@@ -456,7 +467,13 @@ export class GPURenderer {
       this.settings,
     );
     this.structureLevelPass = new StructureLevelPass(gl, header, this.settings);
-    this.unitPass = new UnitPass(gl, header, this.paletteTex, this.settings);
+    this.unitPass = new UnitPass(
+      gl,
+      header,
+      this.paletteTex,
+      this.settings,
+      config,
+    );
     this.namePass = new NamePass(
       gl,
       header,
@@ -553,7 +570,7 @@ export class GPURenderer {
   // ---------------------------------------------------------------------------
 
   resize(cssWidth: number, cssHeight: number): void {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = renderDpr();
     this.canvas.width = Math.round(cssWidth * dpr);
     this.canvas.height = Math.round(cssHeight * dpr);
     this.camera.resize(cssWidth, cssHeight);
@@ -762,6 +779,11 @@ export class GPURenderer {
     }
   }
 
+  /** Re-resolve player name strings live (e.g. anonymous-names toggle). */
+  refreshNames(displayNames: Map<string, string>): void {
+    this.namePass.refreshNames(displayNames);
+  }
+
   updateRelations(data: Uint8Array, size: number): void {
     this.borderPass.updateRelations(data, size);
     this.affiliationPalette.updateRelations(data, size);
@@ -805,6 +827,21 @@ export class GPURenderer {
     if (refs.length === 0) return;
     this.terrainPass.applyTerrainDelta(refs, terrainBytes);
     this.railroadPass.applyTerrainDelta(refs, terrainBytes);
+  }
+
+  /**
+   * Rebuild the terrain texture from the current `settings.terrain` colors.
+   * Terrain is baked into a GPU texture rather than read per-frame, so a
+   * settings change needs this explicit rebuild.
+   */
+  rebuildTerrain(): void {
+    this.terrainPass.setTerrainColors({
+      oceanColor: hexToRgb(this.settings.terrain.oceanColor) ?? undefined,
+      sandColor: hexToRgb(this.settings.terrain.sandColor) ?? undefined,
+      plainsColor: hexToRgb(this.settings.terrain.plainsColor) ?? undefined,
+      highlandColor: hexToRgb(this.settings.terrain.highlandColor) ?? undefined,
+      mountainColor: hexToRgb(this.settings.terrain.mountainColor) ?? undefined,
+    });
   }
 
   applyConquestEvents(events: ConquestFx[]): void {
@@ -897,6 +934,7 @@ export class GPURenderer {
     if (id === this.localPlayerID) return;
     this.localPlayerID = id;
     this.samRadiusPass.setLocalPlayer(id);
+    this.structurePass.setLocalPlayer(id);
     this.affiliationPalette.setLocalPlayer(id);
     this.unitPass.setLocalPlayer(id);
     this.railroadPass.setLocalPlayer(id);
@@ -1033,6 +1071,11 @@ export class GPURenderer {
       this.borderPass.markGlobalDirty();
       this.defenseCoveragePass.markDirty();
     }
+    // Heat decay only runs while fallout is in play — (re)activate whenever a
+    // fallout bit flipped in the tile state that just reached the GPU.
+    if (this.territoryPass.consumeFalloutTouched()) {
+      this.heatManager.activate();
+    }
     this.trailPass.flushTexture();
     this.heatManager.updateHeat();
   }
@@ -1093,7 +1136,7 @@ export class GPURenderer {
   private drawBaseLayer(cam: Float32Array): void {
     const gl = this.gl;
     const pe = this.settings.passEnabled;
-    gl.clearColor(0.04, 0.04, 0.06, 1.0);
+    gl.clearColor(60 / 255, 60 / 255, 60 / 255, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.disable(gl.BLEND);
     if (pe.terrain) this.terrainPass.draw(cam);
@@ -1113,6 +1156,7 @@ export class GPURenderer {
     if (pe.borderStamp) this.borderStampPass.draw(cam);
     if (pe.railroad) this.railroadPass.draw(cam, zoom);
     if (pe.unit) this.unitPass.drawGround(cam);
+    if (pe.falloutBloom) this.bloomPass.draw(cam, this.frameTick);
     this.samRadiusPass.draw(cam);
     this.rangeCirclePass.draw(cam);
     this.nukeTrajectoryPass.draw(cam);
@@ -1124,7 +1168,6 @@ export class GPURenderer {
     this.selectionBoxPass.draw(cam, this.frameTick);
     this.moveIndicatorPass.draw(cam, zoom);
     this.nukeTelegraphPass.draw(cam);
-    if (pe.falloutBloom) this.bloomPass.draw(cam, this.frameTick);
     if (pe.trail) this.trailPass.draw(cam);
     if (pe.unit) this.unitPass.drawMissiles(cam);
 
@@ -1194,5 +1237,9 @@ export class GPURenderer {
     this.gl.deleteTexture(this.sceneTarget.tex);
     this.lastUnits = new Map();
     this.lastStructures = new Map();
+    // Deleting GL resources isn't enough — the context itself counts against
+    // the browser's WebGL context limit until it's GC'd, which is unreliable
+    // on mobile. Explicitly drop it so repeated game starts don't overflow.
+    this.gl.getExtension("WEBGL_lose_context")?.loseContext();
   }
 }

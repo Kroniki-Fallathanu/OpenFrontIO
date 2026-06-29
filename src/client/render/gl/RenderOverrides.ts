@@ -1,7 +1,6 @@
 import type { GraphicsOverrides } from "./GraphicsOverrides";
 import { createThemeSettings, type RenderSettings } from "./RenderSettings";
-
-const DARK_AMBIENT = 0.35;
+import { hexToRgb } from "./utils/ColorUtils";
 
 /**
  * Apply the user's graphics overrides onto a RenderSettings in place: name
@@ -27,14 +26,26 @@ export function applyGraphicsOverrides(
   if (overrides.name?.hoverGlowAlpha !== undefined) {
     settings.name.hoverGlowAlpha = overrides.name.hoverGlowAlpha;
   }
-  if (overrides.structure?.classicIcons === true) {
-    // Classic look: lighter player-colored shape behind a darkened
+  if (overrides.structure?.iconSize !== undefined) {
+    settings.structure.iconSize = overrides.structure.iconSize;
+  }
+  if (overrides.structure?.classicIcons ?? true) {
+    // Classic look (default): lighter player-colored shape behind a darkened
     // player-colored icon glyph (matching the old canvas renderer's
     // structureColors().dark), with a touch of translucency.
     settings.structure.borderDarken = 0.7;
     settings.structure.fillDarken = 1.0;
     settings.structure.iconDarken = 0.3;
     settings.structure.iconAlpha = 0.9;
+  }
+
+  if (overrides.structure?.classicNumbers !== undefined) {
+    settings.structureLevel.classicFont = overrides.structure.classicNumbers;
+  }
+  if (overrides.structure?.showDots === false) {
+    // Zoom is always > 0, so a threshold of 0 means the dots LOD never
+    // triggers — structures stay as full icons at every zoom level.
+    settings.structure.dotsZoomThreshold = 0;
   }
   if (overrides.mapOverlay?.highlightFillBrighten !== undefined) {
     settings.mapOverlay.highlightFillBrighten =
@@ -59,6 +70,15 @@ export function applyGraphicsOverrides(
     settings.mapOverlay.coordinateGridOpacity =
       overrides.mapOverlay.coordinateGridOpacity;
   }
+  if (overrides.mapOverlay?.staleNukeColor !== undefined) {
+    // hexToRgb yields 0-255 channels; the stale-nuke uniforms are 0-1 floats.
+    const rgb = hexToRgb(overrides.mapOverlay.staleNukeColor);
+    if (rgb !== null) {
+      settings.mapOverlay.staleNukeR = rgb[0] / 255;
+      settings.mapOverlay.staleNukeG = rgb[1] / 255;
+      settings.mapOverlay.staleNukeB = rgb[2] / 255;
+    }
+  }
   if (overrides.railroad?.railMinZoom !== undefined) {
     settings.railroad.railMinZoom = overrides.railroad.railMinZoom;
   }
@@ -67,6 +87,37 @@ export function applyGraphicsOverrides(
   }
   if (overrides.passEnabled?.fx !== undefined) {
     settings.passEnabled.fx = overrides.passEnabled.fx;
+  }
+  if (overrides.passEnabled?.fallout !== undefined) {
+    // One user-facing toggle drives both fallout passes: the territory bloom
+    // and its additive light contribution in the day/night composite.
+    settings.passEnabled.falloutBloom = overrides.passEnabled.fallout;
+    settings.passEnabled.falloutLight = overrides.passEnabled.fallout;
+  }
+  if (overrides.terrain?.oceanColor !== undefined) {
+    settings.terrain.oceanColor = overrides.terrain.oceanColor;
+  }
+  if (overrides.terrain?.sandColor !== undefined) {
+    settings.terrain.sandColor = overrides.terrain.sandColor;
+  }
+  if (overrides.terrain?.plainsColor !== undefined) {
+    settings.terrain.plainsColor = overrides.terrain.plainsColor;
+  }
+  if (overrides.terrain?.highlandColor !== undefined) {
+    settings.terrain.highlandColor = overrides.terrain.highlandColor;
+  }
+  if (overrides.terrain?.mountainColor !== undefined) {
+    settings.terrain.mountainColor = overrides.terrain.mountainColor;
+  }
+  if (overrides.lighting?.ambient !== undefined) {
+    settings.lighting.ambient = overrides.lighting.ambient;
+    // The composite only darkens the scene (and reveals the structure/unit
+    // glow) when ambient < 1; at ambient === 1 it's a visual identity, so
+    // don't pay the scene-capture cost of enabling the lighting pass.
+    settings.lighting.enabled = overrides.lighting.ambient < 1;
+  }
+  if (overrides.lighting?.falloffPower !== undefined) {
+    settings.lighting.falloffPower = overrides.lighting.falloffPower;
   }
   if (overrides.name?.darkNames !== undefined) {
     const dark = overrides.name.darkNames;
@@ -111,14 +162,4 @@ export function applyGraphicsOverrides(
     settings.mapOverlay.friendlyTintRatio = 0.85;
     settings.mapOverlay.embargoTintRatio = 0.85;
   }
-}
-
-/** Apply dark-mode lighting (ambient + enabled) onto settings when active. */
-export function applyDarkModeOverride(
-  settings: RenderSettings,
-  isDark: boolean,
-): void {
-  if (!isDark) return;
-  settings.lighting.ambient = DARK_AMBIENT;
-  settings.lighting.enabled = true;
 }

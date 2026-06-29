@@ -36,6 +36,7 @@ export class MapPicker extends LitElement {
   @property({ type: Boolean }) useRandomMap = false;
   @property({ type: Boolean }) showMedals = false;
   @property({ type: Boolean }) randomMapDivider = false;
+  @property({ type: String }) searchQuery = "";
   @property({ attribute: false }) mapWins: Map<GameMapType, Set<Difficulty>> =
     new Map();
   @property({ attribute: false }) onSelectMap?: (map: GameMapType) => void;
@@ -70,8 +71,29 @@ export class MapPicker extends LitElement {
     this.expandedCategories = expanded;
   }
 
+  private get allCategories(): MapCategory[] {
+    return mapCategoryOrder.filter((categoryKey) => categoryKey !== "featured");
+  }
+
+  private toggleExpandAll() {
+    this.expandedCategories =
+      this.expandedCategories.size > 0
+        ? new Set()
+        : new Set(this.allCategories);
+  }
+
   private preventImageDrag(event: DragEvent) {
     event.preventDefault();
+  }
+
+  private get filteredMaps(): MapInfo[] {
+    if (!this.searchQuery.trim()) return [];
+    const query = this.searchQuery.trim().toLowerCase();
+    return maps.filter((m) => {
+      const name = translateText(m.translationKey).toLowerCase();
+      const id = m.id.toLowerCase();
+      return name.includes(query) || id.includes(query);
+    });
   }
 
   private getWins(mapValue: GameMapType): Set<Difficulty> {
@@ -172,11 +194,42 @@ export class MapPicker extends LitElement {
 
   private renderAllTab() {
     return html`<div class="space-y-3">
-      ${mapCategoryOrder
-        .filter((categoryKey) => categoryKey !== "featured")
-        .map((categoryKey) =>
-          this.renderCategoryBar(categoryKey, mapsInCategory(categoryKey)),
-        )}
+      ${this.allCategories.map((categoryKey) =>
+        this.renderCategoryBar(categoryKey, mapsInCategory(categoryKey)),
+      )}
+    </div>`;
+  }
+
+  private renderExpandToggle() {
+    const anyExpanded = this.expandedCategories.size > 0;
+    return html`<div
+      class="shrink-0 rounded-xl border border-white/10 bg-black/20 p-1"
+    >
+      <button
+        type="button"
+        aria-expanded=${anyExpanded}
+        title=${anyExpanded
+          ? translateText("map_component.collapse_all")
+          : translateText("map_component.expand_all")}
+        @click=${() => this.toggleExpandAll()}
+        class="h-full flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider text-white/60 hover:text-white transition-all active:scale-95"
+      >
+        <svg
+          class="w-3 h-3 shrink-0 transition-transform duration-200 ${anyExpanded
+            ? "rotate-180"
+            : ""}"
+          viewBox="0 0 12 12"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path d="M2 4l4 5 4-5z" />
+        </svg>
+        <span class="hidden sm:inline">
+          ${anyExpanded
+            ? translateText("map_component.collapse_all")
+            : translateText("map_component.expand_all")}
+        </span>
+      </button>
     </div>`;
   }
 
@@ -211,6 +264,36 @@ export class MapPicker extends LitElement {
     }
   }
 
+  private renderSearchResults() {
+    const results = this.filteredMaps;
+    if (results.length === 0) {
+      return html`<div
+        class="w-full flex flex-col items-center justify-center gap-3 py-12 px-4 text-center rounded-xl border border-dashed border-white/10 bg-black/20"
+      >
+        <svg
+          class="w-8 h-8 text-white/30"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+        >
+          <path
+            fill-rule="evenodd"
+            d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
+            clip-rule="evenodd"
+          />
+        </svg>
+        <p class="text-sm text-white/50 leading-relaxed max-w-xs">
+          ${translateText("map_component.no_results")}
+        </p>
+      </div>`;
+    }
+    return html`<div class="w-full">
+      ${this.renderSectionHeading(
+        `${translateText("map_component.search_results")} (${results.length})`,
+      )}
+      ${this.renderMapGrid(results)}
+    </div>`;
+  }
+
   private renderTabButton(tab: MapTab, label: string) {
     const isActive = this.activeTab === tab;
     return html`<button
@@ -227,20 +310,30 @@ export class MapPicker extends LitElement {
   }
 
   render() {
+    const isSearching = this.searchQuery.trim().length > 0;
     return html`
       <div class="space-y-8">
-        <div class="w-full">
-          <div
-            role="tablist"
-            aria-label="${translateText("map.map")}"
-            class="grid grid-cols-3 gap-2 rounded-xl border border-white/10 bg-black/20 p-1"
-          >
-            ${this.renderTabButton("featured", translateText("map.featured"))}
-            ${this.renderTabButton("all", translateText("map.all"))}
-            ${this.renderTabButton("favorites", translateText("map.favorites"))}
-          </div>
+        <div class="w-full flex items-center gap-2">
+          ${isSearching
+            ? null
+            : html`<div
+                  role="tablist"
+                  aria-label="${translateText("map.map")}"
+                  class="flex-1 grid grid-cols-3 gap-2 rounded-xl border border-white/10 bg-black/20 p-1"
+                >
+                  ${this.renderTabButton(
+                    "featured",
+                    translateText("map.featured"),
+                  )}
+                  ${this.renderTabButton("all", translateText("map.all"))}
+                  ${this.renderTabButton(
+                    "favorites",
+                    translateText("map.favorites"),
+                  )}
+                </div>
+                ${this.activeTab === "all" ? this.renderExpandToggle() : null}`}
         </div>
-        ${this.renderActiveTab()}
+        ${isSearching ? this.renderSearchResults() : this.renderActiveTab()}
         <div
           class="w-full ${this.randomMapDivider
             ? "pt-4 border-t border-white/5"

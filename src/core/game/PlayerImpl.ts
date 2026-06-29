@@ -41,7 +41,12 @@ import {
 } from "./Game";
 import { GameImpl } from "./GameImpl";
 import { andFN, manhattanDistFN, TileRef } from "./GameMap";
-import { diffPlayerUpdate } from "./GameUpdateUtils";
+import {
+  ATTACK_DELTA_INCOMING,
+  ATTACK_DELTA_OUTGOING,
+  diffPlayerUpdate,
+  packAttackTroopDeltas,
+} from "./GameUpdateUtils";
 import {
   AllianceView,
   AttackUpdate,
@@ -154,13 +159,53 @@ export class PlayerImpl implements Player {
    * return only fields that changed since the previous call (a partial
    * `{ type, id, ...changedFields }`), or `null` if nothing changed.
    *
+   * tilesOwned / gold / troops are excluded from partial updates (they churn
+   * for every alive player every tick): when any of them changed, a
+   * `[smallID, tilesOwned, gold, troops]` quad is pushed to `statsOut`
+   * instead, which GameImpl drains into the transferable
+   * `packedPlayerUpdates` buffer. Attack troop counts likewise go to
+   * `attackTroopsOut` as `[smallID, direction, index, troops]` quads
+   * (→ `packedAttackUpdates`) instead of re-sending whole attack arrays.
+   *
    * `lastSentUpdate` is updated to the full snapshot on every call.
    */
-  toUpdate(): PlayerUpdate | null {
+  toUpdate(
+    statsOut?: number[],
+    attackTroopsOut?: number[],
+  ): PlayerUpdate | null {
     const full = this.toFullUpdate();
     const prev = this.lastSentUpdate;
     this.lastSentUpdate = full;
     if (prev === undefined) return full;
+    if (
+      statsOut !== undefined &&
+      (prev.tilesOwned !== full.tilesOwned ||
+        prev.gold !== full.gold ||
+        prev.troops !== full.troops)
+    ) {
+      statsOut.push(
+        full.smallID!,
+        full.tilesOwned!,
+        Number(full.gold),
+        full.troops!,
+      );
+    }
+    if (attackTroopsOut !== undefined) {
+      packAttackTroopDeltas(
+        prev.outgoingAttacks,
+        full.outgoingAttacks,
+        full.smallID!,
+        ATTACK_DELTA_OUTGOING,
+        attackTroopsOut,
+      );
+      packAttackTroopDeltas(
+        prev.incomingAttacks,
+        full.incomingAttacks,
+        full.smallID!,
+        ATTACK_DELTA_INCOMING,
+        attackTroopsOut,
+      );
+    }
     return diffPlayerUpdate(prev, full);
   }
 
@@ -371,17 +416,12 @@ export class PlayerImpl implements Player {
     }
   }
 
-  // Count of units built by the player, including construction
+  // Count of units built by the player, including those still under
+  // construction. recordUnitConstructed() is called in buildUnit() the moment a
+  // unit is created (while still under construction), so numUnitsConstructed
+  // already accounts for in-progress builds — don't re-count them.
   unitsConstructed(type: UnitType): number {
-    const built = this.numUnitsConstructed[type] ?? 0;
-    let constructing = 0;
-    for (const unit of this._units) {
-      if (unit.type() !== type) continue;
-      if (!unit.isUnderConstruction()) continue;
-      constructing++;
-    }
-    const total = constructing + built;
-    return total;
+    return this.numUnitsConstructed[type] ?? 0;
   }
 
   // Count of units owned by the player, not including construction
@@ -437,7 +477,16 @@ export class PlayerImpl implements Player {
     const ns: Set<Player | TerraNullius> = new Set();
     for (const border of this.borderTiles()) {
       for (const neighbor of this.mg.map().neighbors(border)) {
-        if (this.mg.map().isLand(neighbor)) {
+        if (
+          this.mg.map().isLand(neighbor) &&
+          !this.mg.map().isImpassable(neighbor)
+        ) {
+          if (
+            !this.mg.map().hasOwner(neighbor) &&
+            this.mg.map().hasFallout(neighbor)
+          ) {
+            continue;
+          }
           const owner = this.mg.map().ownerID(neighbor);
           if (owner !== this.smallID()) {
             ns.add(
@@ -486,6 +535,7 @@ export class PlayerImpl implements Player {
         if (!map.isValidCoord(nx, ny)) continue;
         const tile = map.ref(nx, ny);
         if (!map.isLand(tile)) continue;
+        if (map.isImpassable(tile)) continue;
         if (!map.hasOwner(tile) && map.hasFallout(tile)) continue;
         const owner = map.ownerID(tile);
         if (owner !== this.smallID()) {
@@ -1272,7 +1322,7 @@ export class PlayerImpl implements Player {
         canUpgrade,
         cost,
         overlappingRailroads: buildNew
-          ? rail.overlappingRailroads(canBuild as TileRef)
+          ? rail.overlappingRailroads(u, canBuild as TileRef)
           : [],
         ghostRailPaths: buildNew
           ? rail.computeGhostRailPaths(u, canBuild as TileRef)
@@ -1338,6 +1388,10 @@ export class PlayerImpl implements Player {
   nukeSpawn(tile: TileRef, nukeType: UnitType): TileRef | false {
     const mg = this.mg;
     if (mg.isSpawnImmunityActive()) {
+      return false;
+    }
+    // Impassable terrain cannot be nuked.
+    if (mg.isImpassable(tile)) {
       return false;
     }
     const owner = this.mg.owner(tile);
@@ -1423,7 +1477,7 @@ export class PlayerImpl implements Player {
   }
 
   landBasedUnitSpawn(tile: TileRef): TileRef | false {
-    return this.mg.isLand(tile) ? tile : false;
+    return this.mg.isLand(tile) && !this.mg.isImpassable(tile) ? tile : false;
   }
 
   landBasedStructureSpawn(
@@ -1563,11 +1617,10 @@ export class PlayerImpl implements Player {
     player: Player,
     treatAFKFriendly: boolean = false,
   ): boolean {
-    if (this.type() === PlayerType.Bot) {
-      // Bots are not affected by immunity
+    if (this.type() !== PlayerType.Human) {
+      // Only human attackers respect PVP immunity
       return !this.isFriendly(player, treatAFKFriendly);
     }
-    // Humans and Nations respect immunity
     return !player.isImmune() && !this.isFriendly(player, treatAFKFriendly);
   }
 
@@ -1581,7 +1634,7 @@ export class PlayerImpl implements Player {
       return false;
     }
 
-    if (!this.mg.isLand(tile)) {
+    if (!this.mg.isLand(tile) || this.mg.isImpassable(tile)) {
       return false;
     }
     if (this.mg.hasOwner(tile)) {
@@ -1590,7 +1643,7 @@ export class PlayerImpl implements Player {
       for (const t of this.mg.bfs(
         tile,
         andFN(
-          (gm, t) => !gm.hasOwner(t) && gm.isLand(t),
+          (gm, t) => !gm.hasOwner(t) && gm.isLand(t) && !gm.isImpassable(t),
           manhattanDistFN(tile, 200),
         ),
       )) {

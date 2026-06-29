@@ -16,7 +16,7 @@ import type { TilePair } from "../../types";
 import type { RenderSettings } from "../RenderSettings";
 import { getPaletteSize } from "../utils/ColorUtils";
 import { createMapQuad, createProgram, shaderSrc } from "../utils/GlUtils";
-import { TILE_DEFINES } from "../utils/TileCodec";
+import { FALLOUT_BIT, OWNER_MASK, TILE_DEFINES } from "../utils/TileCodec";
 
 import overlayVertSrc from "../shaders/map-overlay/overlay.vert.glsl?raw";
 import territoryFragSrc from "../shaders/map-overlay/territory.frag.glsl?raw";
@@ -65,6 +65,13 @@ export class TerritoryPass {
   private tilesDirty = false;
 
   /**
+   * True when a tile's fallout bit flipped since the last consume (or a full
+   * state replacement happened, which may contain fallout). The renderer uses
+   * this to activate the heat-decay pass only while fallout is in play.
+   */
+  private falloutTouched = false;
+
+  /**
    * True after a full state replacement (initial load / seek). flushTileTexture
    * uploads the full cpuTileState via texSubImage2D and discards any queued
    * scatter patches — those are already covered by the full upload.
@@ -82,7 +89,9 @@ export class TerritoryPass {
    * incrementally repaint affected tiles instead of rebuilding the whole map.
    * Wired by the renderer to `borderPass.patchTile`.
    */
-  private borderPatchConsumer: ((x: number, y: number) => void) | null = null;
+  private borderPatchConsumer:
+    | ((x: number, y: number, prevOwner: number, newOwner: number) => void)
+    | null = null;
 
   /**
    * Drip buckets — round-robin staggering of tile updates across render frames.
@@ -200,6 +209,7 @@ export class TerritoryPass {
     this.scatter.clear();
     this.fullUploadPending = true;
     this.tilesDirty = true;
+    this.falloutTouched = true; // conservative: replaced state may have fallout
   }
 
   /**
@@ -208,7 +218,9 @@ export class TerritoryPass {
    * hooks this to `borderPass.patchTile` so border recompute scales with the
    * number of changed tiles instead of full map area.
    */
-  setBorderPatchConsumer(fn: (x: number, y: number) => void): void {
+  setBorderPatchConsumer(
+    fn: (x: number, y: number, prevOwner: number, newOwner: number) => void,
+  ): void {
     this.borderPatchConsumer = fn;
   }
 
@@ -238,12 +250,18 @@ export class TerritoryPass {
       for (let i = 0; i < bucket.length; i += 2) {
         const ref = bucket[i];
         const state = bucket[i + 1];
+        const prev = ts[ref];
+        if (((prev ^ state) & FALLOUT_BIT) !== 0) {
+          this.falloutTouched = true;
+        }
         ts[ref] = state;
         if (!pending) {
           const x = ref % w;
           const y = (ref - x) / w;
           this.scatter.push(x, y, state);
-          if (borderFn) borderFn(x, y);
+          if (borderFn) {
+            borderFn(x, y, prev & OWNER_MASK, state & OWNER_MASK);
+          }
         }
       }
       bucket.length = 0;
@@ -269,12 +287,18 @@ export class TerritoryPass {
       for (let i = 0; i < bucket.length; i += 2) {
         const ref = bucket[i];
         const state = bucket[i + 1];
+        const prev = ts[ref];
+        if (((prev ^ state) & FALLOUT_BIT) !== 0) {
+          this.falloutTouched = true;
+        }
         ts[ref] = state;
         if (!pending) {
           const x = ref % w;
           const y = (ref - x) / w;
           this.scatter.push(x, y, state);
-          if (borderFn) borderFn(x, y);
+          if (borderFn) {
+            borderFn(x, y, prev & OWNER_MASK, state & OWNER_MASK);
+          }
         }
       }
       bucket.length = 0;
@@ -287,6 +311,20 @@ export class TerritoryPass {
   private clearDripBuckets(): void {
     for (let b = 0; b < this.nBuckets; b++) this.dripBuckets[b].length = 0;
     this.currentBucket = 0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Queries
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns true (and resets) if any fallout bit flipped since the last call.
+   * Checked by the renderer each frame to (re)activate heat decay.
+   */
+  consumeFalloutTouched(): boolean {
+    const touched = this.falloutTouched;
+    this.falloutTouched = false;
+    return touched;
   }
 
   // ---------------------------------------------------------------------------

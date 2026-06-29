@@ -29,7 +29,6 @@ import {
 } from "../core/game/GameUpdates";
 import { loadTerrainMap, TerrainMapData } from "../core/game/TerrainMapLoader";
 import {
-  DARK_MODE_KEY,
   GRAPHICS_KEY,
   USER_SETTINGS_CHANGED_EVENT,
   UserSettings,
@@ -68,12 +67,13 @@ import { createCanvas } from "./Utils";
 import { WebGLFrameBuilder } from "./WebGLFrameBuilder";
 import { createRenderer, GameRenderer } from "./hud/GameRenderer";
 import {
-  applyDarkModeOverride,
   applyGraphicsOverrides,
   createRenderSettings,
   deepAssign,
   MapRenderer,
   preloadAtlasData,
+  renderDpr,
+  type RenderSettings,
 } from "./render/gl";
 import { ALL_UNIT_TYPES, UnitState } from "./render/types";
 import { SoundManager } from "./sound/SoundManager";
@@ -256,6 +256,7 @@ export function joinLobby(
 function createWebGLView(
   terrainMap: TerrainMapData,
   config: Config,
+  settings: RenderSettings,
 ): {
   view: MapRenderer;
   glCanvas: HTMLCanvasElement;
@@ -311,6 +312,7 @@ function createWebGLView(
     terrainBytes,
     palette,
     config,
+    settings,
     captureRaf,
     captureCaf,
   );
@@ -328,7 +330,7 @@ function mountWebGLFrameLoop(
   transformHandler: import("./TransformHandler").TransformHandler,
   gameView: GameView,
   eventBus: EventBus,
-): { builder: WebGLFrameBuilder } {
+): { builder: WebGLFrameBuilder; stopFrameLoop: () => void } {
   const gameMap = terrainMap.gameMap;
   const mapWidth = gameMap.width();
   const mapHeight = gameMap.height();
@@ -351,7 +353,7 @@ function mountWebGLFrameLoop(
 
   const syncCamera = (): void => {
     const scale = transformHandler.scale;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = renderDpr();
     const centerX =
       transformHandler.offsetX +
       mapWidth / 2 +
@@ -387,11 +389,24 @@ function mountWebGLFrameLoop(
   // TransformHandler, pushes it to WebGL, and synchronously invokes the
   // renderer's captured frame callback (which draws). One RAF = one
   // synchronized camera-update + WebGL render.
+  let rafId: number | null = null;
   const driveFrame = (): void => {
     syncCamera();
-    requestAnimationFrame(driveFrame);
+    rafId = requestAnimationFrame(driveFrame);
   };
-  requestAnimationFrame(driveFrame);
+  rafId = requestAnimationFrame(driveFrame);
+
+  // Tear down the per-frame loop so a stopped game stops driving WebGL and
+  // releases the view for disposal. Left running, the RAF keeps the WebGL
+  // context referenced (and alive) forever — each new game would then stack
+  // another context until the browser's limit is hit.
+  const stopFrameLoop = (): void => {
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    resizeObs.disconnect();
+  };
 
   const builder = new WebGLFrameBuilder(view);
 
@@ -413,14 +428,16 @@ function mountWebGLFrameLoop(
     const frameData = gameView.frameData();
     view.uploadTileAndTrailState(frameData.tileState, frameData.trailState);
 
-    // Structures and railroads normally skip GPU upload unless marked dirty, now force
+    // Structures, railroads and relations normally skip GPU upload unless
+    // marked dirty, now force
     view.updateStructures(frameData.units as Map<number, UnitState>);
     view.uploadRailroadState(frameData.railroadState);
+    view.updateRelations(frameData.relationMatrix, frameData.relationSize);
 
     builder.update(gameView);
   };
 
-  return { builder };
+  return { builder, stopFrameLoop };
 }
 
 async function createClientGame(
@@ -483,43 +500,68 @@ async function createClientGame(
 
   const soundManager = new SoundManager(eventBus, userSettings);
   try {
+    // Resolve render settings (defaults + user overrides) up front so the
+    // renderer is built with the final values — no construct-with-defaults,
+    // re-apply-overrides dance, and texture-baking passes (terrain) get the
+    // right colors on the first build.
+    const resolveRenderSettings = (): RenderSettings => {
+      const settings = createRenderSettings();
+      applyGraphicsOverrides(settings, userSettings.graphicsOverrides());
+      return settings;
+    };
+
     const { view, glCanvas, cachedWebGLFrameCallback } = createWebGLView(
       gameMap,
       config,
+      resolveRenderSettings(),
     );
+
+    const graphicsListenerAbort = new AbortController();
 
     view.setShowPatterns(userSettings.territoryPatterns());
     globalThis.addEventListener(
       `${USER_SETTINGS_CHANGED_EVENT}:settings.territoryPatterns`,
       (e) => view.setShowPatterns((e as CustomEvent<string>).detail === "true"),
+      { signal: graphicsListenerAbort.signal },
     );
 
-    const graphicsListenerAbort = new AbortController();
+    // Re-resolve names drawn on the map when the anonymous-names setting toggles
+    // so they switch live, like the leaderboard.
+    globalThis.addEventListener(
+      `${USER_SETTINGS_CHANGED_EVENT}:settings.anonymousNames`,
+      () => webglBuilder.refreshNames(gameView),
+      { signal: graphicsListenerAbort.signal },
+    );
+
+    // Re-resolve settings and copy them onto the renderer's live object in
+    // place (passes hold a reference to it, so they pick the change up).
     const regenerateRenderSettings = (): void => {
-      const live = view.getSettings();
-      deepAssign(live, createRenderSettings());
-      applyGraphicsOverrides(live, userSettings.graphicsOverrides());
-      applyDarkModeOverride(live, userSettings.darkMode());
+      deepAssign(view.getSettings(), resolveRenderSettings());
     };
-    // Re-apply render settings, then re-theme and recolor players, on a
-    // graphics-override change (covers a theme switch such as colorblind mode).
-    const onGraphicsChanged = (): void => {
-      regenerateRenderSettings();
+    // Rebuild the GPU-derived graphics state that the per-frame passes don't
+    // pick up from the live settings object on their own.
+    const refreshDerivedGraphics = (): void => {
+      // Terrain is baked into a GPU texture rather than read per-frame, so a
+      // terrain-color override (e.g. ocean) needs an explicit texture rebuild.
+      view.rebuildTerrain();
       // A graphics override can switch the active theme (e.g. colorblind mode),
       // so re-theme existing players and re-upload the palette to recolor their
       // territory fills/borders live.
       gameView.refreshPlayerColors();
       webglBuilder.refreshPalette(gameView);
     };
-    regenerateRenderSettings();
+    // Re-apply render settings, then re-theme and recolor players, on a
+    // graphics-override change (covers a theme switch such as colorblind mode).
+    const onGraphicsChanged = (): void => {
+      regenerateRenderSettings();
+      refreshDerivedGraphics();
+    };
+    // No initial regenerate or terrain rebuild needed — the renderer was
+    // constructed with the resolved settings above, so the terrain texture
+    // already bakes any saved ocean-color override.
     globalThis.addEventListener(
       `${USER_SETTINGS_CHANGED_EVENT}:${GRAPHICS_KEY}`,
       onGraphicsChanged,
-      { signal: graphicsListenerAbort.signal },
-    );
-    globalThis.addEventListener(
-      `${USER_SETTINGS_CHANGED_EVENT}:${DARK_MODE_KEY}`,
-      regenerateRenderSettings,
       { signal: graphicsListenerAbort.signal },
     );
 
@@ -532,7 +574,11 @@ async function createClientGame(
         debugGuiLoading = true;
         import("./render/gl/debug/index")
           .then(({ createDebugGui }) => {
-            debugGui = createDebugGui(view.getSettings());
+            debugGui = createDebugGui(
+              view.getSettings(),
+              resolveRenderSettings,
+              refreshDerivedGraphics,
+            );
             debugGui.open();
           })
           .finally(() => {
@@ -552,7 +598,7 @@ async function createClientGame(
       view,
     );
 
-    const { builder: webglBuilder } = mountWebGLFrameLoop(
+    const { builder: webglBuilder, stopFrameLoop } = mountWebGLFrameLoop(
       gameMap,
       view,
       glCanvas,
@@ -561,6 +607,20 @@ async function createClientGame(
       gameView,
       eventBus,
     );
+
+    // Releases all WebGL/DOM resources this game created. Without it, stopping
+    // a game (e.g. joining another without a page reload) leaks the WebGL
+    // context, canvas and input overlay — a few games and mobile browsers hit
+    // their WebGL context limit. Idempotent: stop() may be called more than once.
+    let rendererDisposed = false;
+    const disposeRenderer = (): void => {
+      if (rendererDisposed) return;
+      rendererDisposed = true;
+      stopFrameLoop();
+      view.dispose();
+      glCanvas.remove();
+      inputOverlay.remove();
+    };
 
     console.log(
       `creating private game got difficulty: ${lobbyConfig.gameStartInfo.config.difficulty}`,
@@ -579,6 +639,7 @@ async function createClientGame(
       userSettings,
       webglBuilder,
       graphicsListenerAbort,
+      disposeRenderer,
     );
   } catch (err) {
     soundManager.dispose();
@@ -613,6 +674,7 @@ export class ClientGameRunner {
     private userSettings: UserSettings,
     private webglBuilder: WebGLFrameBuilder | null = null,
     private graphicsListenerAbort: AbortController | null = null,
+    private disposeRenderer: (() => void) | null = null,
   ) {
     this.lastMessageTime = Date.now();
   }
@@ -870,6 +932,7 @@ export class ClientGameRunner {
   public stop() {
     this.soundManager.dispose();
     this.graphicsListenerAbort?.abort();
+    this.disposeRenderer?.();
     if (!this.isActive) return;
 
     this.isActive = false;

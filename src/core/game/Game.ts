@@ -334,6 +334,7 @@ export enum TerrainType {
   Highland,
   Mountain,
   Ocean,
+  Impassable,
 }
 
 export enum PlayerType {
@@ -666,7 +667,10 @@ export interface Player {
   executeRetreat(attackID: string): void;
 
   // Misc
-  toUpdate(): PlayerUpdate | null;
+  toUpdate(
+    statsOut?: number[],
+    attackTroopsOut?: number[],
+  ): PlayerUpdate | null;
   playerProfile(): PlayerProfile;
   // WARNING: this operation is expensive.
   bestTransportShipSpawn(tile: TileRef): TileRef | false;
@@ -720,6 +724,8 @@ export interface Game extends GameMap {
   drainPackedTileUpdates(): Uint32Array;
   recordMotionPlan(record: MotionPlanRecord): void;
   drainPackedMotionPlans(): Uint32Array | null;
+  drainPackedPlayerUpdates(): Float64Array | null;
+  drainPackedAttackUpdates(): Float64Array | null;
   setWinner(winner: Player | Team, allPlayersStats: AllPlayersStats): void;
   getWinner(): Player | Team | null;
   config(): Config;
@@ -793,6 +799,12 @@ export interface Game extends GameMap {
   miniWaterGraph(): AbstractGraph | null;
   getWaterComponent(tile: TileRef): number | null;
   hasWaterComponent(tile: TileRef, component: number): boolean;
+  /**
+   * Returns the approximate number of water tiles in the component
+   * containing `tile`, or null if the tile has no water component. Useful for
+   * filtering tiny water bodies (e.g. preventing AI port placement on ponds).
+   */
+  getWaterComponentSize(tile: TileRef): number | null;
   /**
    * Returns the set of water components that `player` shares with at least one
    * valid trade partner (cached). Used by nation AI for port-placement

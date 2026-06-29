@@ -50,6 +50,10 @@ export class MapRenderer {
     private terrainBytes: Uint8Array,
     private paletteData: Float32Array,
     private config: Config,
+    // Resolved render settings (defaults + overrides). Held so the same object
+    // is re-used when a GPURenderer is recreated after a context restore,
+    // preserving any user overrides that were applied to it.
+    private settings: RenderSettings,
     private raf?: typeof requestAnimationFrame,
     private caf?: typeof cancelAnimationFrame,
   ) {
@@ -78,6 +82,7 @@ export class MapRenderer {
       this.terrainBytes,
       this.paletteData,
       this.config,
+      this.settings,
       this.raf,
       this.caf,
     );
@@ -158,6 +163,9 @@ export class MapRenderer {
   ): void {
     this.renderer?.updateNames(names, players, snap, statusData);
   }
+  refreshNames(displayNames: Map<string, string>): void {
+    this.renderer?.refreshNames(displayNames);
+  }
   updateRelations(data: Uint8Array, size: number): void {
     this.renderer?.updateRelations(data, size);
   }
@@ -182,6 +190,11 @@ export class MapRenderer {
   /** Refresh terrain texels whose underlying terrain byte changed (water nukes). */
   applyTerrainDelta(refs: readonly number[], terrainBytes: Uint8Array): void {
     this.renderer?.applyTerrainDelta(refs, terrainBytes);
+  }
+
+  /** Rebuild the terrain texture from current settings (e.g. ocean color). */
+  rebuildTerrain(): void {
+    this.renderer?.rebuildTerrain();
   }
   updateAttackRings(rings: AttackRingInput[]): void {
     this.renderer?.updateAttackRings(rings);
