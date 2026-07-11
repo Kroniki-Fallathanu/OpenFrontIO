@@ -1,0 +1,74 @@
+{
+  "categories": ["other"],
+  "id": "LabiryntGrani",
+  "map": {
+    "height": 384,
+    "num_land_tiles": 196608,
+    "width": 512
+  },
+  "map16x": {
+    "height": 96,
+    "num_land_tiles": 12288,
+    "width": 128
+  },
+  "map4x": {
+    "height": 192,
+    "num_land_tiles": 49152,
+    "width": 256
+  },
+  "multiplayer_frequency": 0,
+  "name": "Labirynt Grani",
+  "nations": [
+    {
+      "coordinates": [406, 146],
+      "flag": "",
+      "name": "Osada Brzozowa"
+    },
+    {
+      "coordinates": [16, 366],
+      "flag": "",
+      "name": "Gród Cierni"
+    },
+    {
+      "coordinates": [139, 18],
+      "flag": "",
+      "name": "Warownia Cisowa"
+    },
+    {
+      "coordinates": [495, 362],
+      "flag": "",
+      "name": "Osada Mgielna"
+    },
+    {
+      "coordinates": [231, 275],
+      "flag": "",
+      "name": "Stanica Kruków"
+    },
+    {
+      "coordinates": [81, 191],
+      "flag": "",
+      "name": "Obóz Wilczy"
+    },
+    {
+      "coordinates": [289, 65],
+      "flag": "",
+      "name": "Gród Turów"
+    },
+    {
+      "coordinates": [16, 73],
+      "flag": "",
+      "name": "Osada Wrzosowa"
+    },
+    {
+      "coordinates": [353, 329],
+      "flag": "",
+      "name": "Warownia Skalna"
+    },
+    {
+      "coordinates": [440, 277],
+      "flag": "",
+      "name": "Osada Bobrów"
+    }
+  ],
+  "translation_key": "map.labiryntgrani"
+}

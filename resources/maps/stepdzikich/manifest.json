@@ -1,0 +1,74 @@
+{
+  "categories": ["other"],
+  "id": "StepDzikich",
+  "map": {
+    "height": 384,
+    "num_land_tiles": 196608,
+    "width": 512
+  },
+  "map16x": {
+    "height": 96,
+    "num_land_tiles": 12288,
+    "width": 128
+  },
+  "map4x": {
+    "height": 192,
+    "num_land_tiles": 49152,
+    "width": 256
+  },
+  "multiplayer_frequency": 0,
+  "name": "Step Dzikich",
+  "nations": [
+    {
+      "coordinates": [34, 255],
+      "flag": "",
+      "name": "Osada Brzozowa"
+    },
+    {
+      "coordinates": [491, 16],
+      "flag": "",
+      "name": "Gród Cierni"
+    },
+    {
+      "coordinates": [366, 367],
+      "flag": "",
+      "name": "Warownia Cisowa"
+    },
+    {
+      "coordinates": [248, 110],
+      "flag": "",
+      "name": "Osada Mgielna"
+    },
+    {
+      "coordinates": [100, 18],
+      "flag": "",
+      "name": "Stanica Kruków"
+    },
+    {
+      "coordinates": [492, 254],
+      "flag": "",
+      "name": "Obóz Wilczy"
+    },
+    {
+      "coordinates": [189, 322],
+      "flag": "",
+      "name": "Gród Turów"
+    },
+    {
+      "coordinates": [414, 138],
+      "flag": "",
+      "name": "Osada Wrzosowa"
+    },
+    {
+      "coordinates": [302, 243],
+      "flag": "",
+      "name": "Warownia Skalna"
+    },
+    {
+      "coordinates": [338, 31],
+      "flag": "",
+      "name": "Osada Bobrów"
+    }
+  ],
+  "translation_key": "map.stepdzikich"
+}

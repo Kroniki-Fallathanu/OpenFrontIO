@@ -1,0 +1,59 @@
+{
+  "id": "BlizniaczeKotliny",
+  "name": "Bliźniacze Kotliny",
+  "translation_key": "map.blizniaczekotliny",
+  "categories": ["other"],
+  "multiplayer_frequency": 0,
+  "nations": [
+    {
+      "coordinates": [352, 141],
+      "name": "Osada Brzozowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [17, 364],
+      "name": "Gród Cierni",
+      "flag": ""
+    },
+    {
+      "coordinates": [71, 18],
+      "name": "Warownia Cisowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [494, 367],
+      "name": "Osada Mgielna",
+      "flag": ""
+    },
+    {
+      "coordinates": [160, 228],
+      "name": "Stanica Kruków",
+      "flag": ""
+    },
+    {
+      "coordinates": [492, 23],
+      "name": "Obóz Wilczy",
+      "flag": ""
+    },
+    {
+      "coordinates": [283, 341],
+      "name": "Gród Turów",
+      "flag": ""
+    },
+    {
+      "coordinates": [234, 57],
+      "name": "Osada Wrzosowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [405, 271],
+      "name": "Warownia Skalna",
+      "flag": ""
+    },
+    {
+      "coordinates": [18, 143],
+      "name": "Osada Bobrów",
+      "flag": ""
+    }
+  ]
+}

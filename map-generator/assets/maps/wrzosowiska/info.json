@@ -1,0 +1,59 @@
+{
+  "id": "Wrzosowiska",
+  "name": "Wrzosowiska",
+  "translation_key": "map.wrzosowiska",
+  "categories": ["other"],
+  "multiplayer_frequency": 0,
+  "nations": [
+    {
+      "coordinates": [487, 237],
+      "name": "Osada Brzozowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [16, 18],
+      "name": "Gród Cierni",
+      "flag": ""
+    },
+    {
+      "coordinates": [143, 364],
+      "name": "Warownia Cisowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [360, 16],
+      "name": "Osada Mgielna",
+      "flag": ""
+    },
+    {
+      "coordinates": [249, 187],
+      "name": "Stanica Kruków",
+      "flag": ""
+    },
+    {
+      "coordinates": [377, 362],
+      "name": "Obóz Wilczy",
+      "flag": ""
+    },
+    {
+      "coordinates": [17, 257],
+      "name": "Gród Turów",
+      "flag": ""
+    },
+    {
+      "coordinates": [176, 59],
+      "name": "Osada Wrzosowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [86, 148],
+      "name": "Warownia Skalna",
+      "flag": ""
+    },
+    {
+      "coordinates": [488, 63],
+      "name": "Osada Bobrów",
+      "flag": ""
+    }
+  ]
+}

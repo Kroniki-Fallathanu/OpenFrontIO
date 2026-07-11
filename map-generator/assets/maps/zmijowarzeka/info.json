@@ -1,0 +1,59 @@
+{
+  "id": "ZmijowaRzeka",
+  "name": "Żmijowa Rzeka",
+  "translation_key": "map.zmijowarzeka",
+  "categories": ["other"],
+  "multiplayer_frequency": 0,
+  "nations": [
+    {
+      "coordinates": [314, 111],
+      "name": "Osada Brzozowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [17, 328],
+      "name": "Gród Cierni",
+      "flag": ""
+    },
+    {
+      "coordinates": [533, 334],
+      "name": "Warownia Cisowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [57, 17],
+      "name": "Osada Mgielna",
+      "flag": ""
+    },
+    {
+      "coordinates": [504, 17],
+      "name": "Stanica Kruków",
+      "flag": ""
+    },
+    {
+      "coordinates": [177, 231],
+      "name": "Obóz Wilczy",
+      "flag": ""
+    },
+    {
+      "coordinates": [300, 333],
+      "name": "Gród Turów",
+      "flag": ""
+    },
+    {
+      "coordinates": [419, 227],
+      "name": "Osada Wrzosowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [543, 161],
+      "name": "Warownia Skalna",
+      "flag": ""
+    },
+    {
+      "coordinates": [231, 16],
+      "name": "Osada Bobrów",
+      "flag": ""
+    }
+  ]
+}

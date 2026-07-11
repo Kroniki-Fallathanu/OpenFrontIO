@@ -27,6 +27,18 @@ const FREQUENCY_EXEMPTIONS: Set<GameMapName> = new Set([
   "Tourney4",
   "EuropeClassic",
   "BritanniaClassic",
+  // Hexah wild-lands mini maps: spawned server-to-server only, never in the
+  // public multiplayer rotation.
+  "KotlinaTraw",
+  "DwaJeziora",
+  "ZmijowaRzeka",
+  "GrzbietSmoka",
+  "StepDzikich",
+  "WyspaWygnancow",
+  "LabiryntGrani",
+  "DolinaBrodu",
+  "BlizniaczeKotliny",
+  "Wrzosowiska",
 ]);
 
 // Keys in the en.json "map" section that are UI strings, not map names.

@@ -1,0 +1,74 @@
+{
+  "categories": ["other"],
+  "id": "KotlinaTraw",
+  "map": {
+    "height": 384,
+    "num_land_tiles": 196608,
+    "width": 512
+  },
+  "map16x": {
+    "height": 96,
+    "num_land_tiles": 12288,
+    "width": 128
+  },
+  "map4x": {
+    "height": 192,
+    "num_land_tiles": 49152,
+    "width": 256
+  },
+  "multiplayer_frequency": 0,
+  "name": "Kotlina Traw",
+  "nations": [
+    {
+      "coordinates": [94, 130],
+      "flag": "",
+      "name": "Osada Brzozowa"
+    },
+    {
+      "coordinates": [490, 359],
+      "flag": "",
+      "name": "Gród Cierni"
+    },
+    {
+      "coordinates": [410, 18],
+      "flag": "",
+      "name": "Warownia Cisowa"
+    },
+    {
+      "coordinates": [180, 363],
+      "flag": "",
+      "name": "Osada Mgielna"
+    },
+    {
+      "coordinates": [311, 207],
+      "flag": "",
+      "name": "Stanica Kruków"
+    },
+    {
+      "coordinates": [24, 279],
+      "flag": "",
+      "name": "Obóz Wilczy"
+    },
+    {
+      "coordinates": [231, 53],
+      "flag": "",
+      "name": "Gród Turów"
+    },
+    {
+      "coordinates": [476, 162],
+      "flag": "",
+      "name": "Osada Wrzosowa"
+    },
+    {
+      "coordinates": [345, 338],
+      "flag": "",
+      "name": "Warownia Skalna"
+    },
+    {
+      "coordinates": [158, 227],
+      "flag": "",
+      "name": "Osada Bobrów"
+    }
+  ],
+  "translation_key": "map.kotlinatraw"
+}
