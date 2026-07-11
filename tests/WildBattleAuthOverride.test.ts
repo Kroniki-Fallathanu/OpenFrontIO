@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, test } from "vitest";
 import {
   battlePersistentIdOverride,
+  battlePlayerNameOverride,
   getPersistentID,
   getPlayToken,
+  sanitizeBattlePlayerName,
 } from "../src/client/Auth";
 
 function setHash(hash: string): void {
@@ -48,5 +50,46 @@ describe("battlePersistentIdOverride — embedded Hexah battle pid", () => {
   test("getPlayToken resolves to the override (no external auth needed)", async () => {
     setHash(`#hexPid=${UUID}`);
     await expect(getPlayToken()).resolves.toBe(UUID);
+  });
+});
+
+describe("battlePlayerNameOverride — embedded Hexah character name", () => {
+  afterEach(() => {
+    setHash("");
+  });
+
+  test("returns the name from #hexName, also next to hexPid", () => {
+    setHash(`#hexPid=${UUID}&hexName=Thoran`);
+    expect(battlePlayerNameOverride()).toBe("Thoran");
+  });
+
+  test("decodes url-encoded names", () => {
+    setHash("#hexName=Stary%20Wilk");
+    expect(battlePlayerNameOverride()).toBe("Stary Wilk");
+  });
+
+  test("returns null when no hexName is present", () => {
+    setHash(`#hexPid=${UUID}`);
+    expect(battlePlayerNameOverride()).toBeNull();
+  });
+
+  test("transliterates Polish diacritics instead of rejecting the name", () => {
+    expect(sanitizeBattlePlayerName("Radogost Żmij")).toBe("Radogost Zmij");
+    expect(sanitizeBattlePlayerName("Łucja")).toBe("Lucja");
+  });
+
+  test("strips disallowed characters and collapses whitespace", () => {
+    expect(sanitizeBattlePlayerName("  Tho<ran>!  z Gór  ")).toBe(
+      "Thoran z Gor",
+    );
+  });
+
+  test("clamps names longer than the username limit", () => {
+    expect(sanitizeBattlePlayerName("A".repeat(40))).toBe("A".repeat(27));
+  });
+
+  test("returns null when nothing valid remains", () => {
+    expect(sanitizeBattlePlayerName("!!")).toBeNull();
+    expect(sanitizeBattlePlayerName("ab")).toBeNull();
   });
 });

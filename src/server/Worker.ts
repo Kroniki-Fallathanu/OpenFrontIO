@@ -155,8 +155,7 @@ export async function startWorker() {
     // is disabled. The creator persistentID is passed explicitly by the caller.
     const internalKey = ServerEnv.internalApiKey();
     const isInternal =
-      internalKey.length > 0 &&
-      req.headers["x-internal-key"] === internalKey;
+      internalKey.length > 0 && req.headers["x-internal-key"] === internalKey;
     const authHeader = req.headers.authorization;
     if (isInternal) {
       const pid = req.headers["x-creator-persistent-id"];
@@ -218,6 +217,9 @@ export async function startWorker() {
     if (game === null) {
       log.warn(`cannot create game, id ${id} already exists`);
       return res.status(409).json({ error: "Game ID already exists" });
+    }
+    if (isInternal) {
+      game.enableAutoStartOnCreatorJoin();
     }
 
     log.info(
