@@ -77,6 +77,16 @@
         "--background-image-url",
         `url("<%- backgroundImageUrl %>")`,
       );
+      // Embedded Hexah battle (iframe, #hexPid in the hash): mark the root
+      // before first paint so styles.css can strip the site chrome — the
+      // embed shows only the hex wallpaper until the game itself renders.
+      // NOTE: do NOT remove elements (the footer hosts <lang-selector>,
+      // which loads translations for the whole app — hiding is CSS-only).
+      try {
+        if (/(^|[#&])hexPid=/.test(window.location.hash)) {
+          document.documentElement.classList.add("hexah-embedded");
+        }
+      } catch (e) {}
       // document.documentElement.style.setProperty(
       //   "--desktop-logo-image-url",
       //   `url("<%- desktopLogoImageUrl %>")`,

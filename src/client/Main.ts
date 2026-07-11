@@ -977,7 +977,9 @@ class Client {
     const currentUrl = window.location.pathname;
 
     if (currentUrl !== targetUrl) {
-      history.replaceState(null, "", targetUrl);
+      // Keep the hash: embedded Hexah battles carry #hexPid/#hexName there,
+      // and they are read later in the join flow (play token, player name).
+      history.replaceState(null, "", targetUrl + window.location.hash);
     }
   }
 
