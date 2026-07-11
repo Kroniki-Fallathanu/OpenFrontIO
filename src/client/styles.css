@@ -695,3 +695,21 @@ news-button .active button::after {
 .remove-player-btn:hover {
   background: #ff6666;
 }
+
+/*
+ * Embedded Hexah wild-battle iframe (#hexPid → html.hexah-embedded, set in
+ * index.html before first paint). The host RPG provides its own chrome, so
+ * outside the game itself only the hex wallpaper stays visible. Elements are
+ * hidden with CSS instead of being removed — the footer hosts <lang-selector>,
+ * which must stay connected to load translations for the whole app.
+ */
+html.hexah-embedded desktop-nav-bar,
+html.hexah-embedded mobile-nav-bar,
+html.hexah-embedded #mobile-menu-backdrop,
+html.hexah-embedded homepage-promos,
+html.hexah-embedded play-page,
+html.hexah-embedded #page-join-lobby,
+html.hexah-embedded game-starting-modal,
+html.hexah-embedded page-footer footer {
+  display: none !important;
+}
