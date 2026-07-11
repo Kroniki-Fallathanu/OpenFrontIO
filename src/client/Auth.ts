@@ -3,6 +3,8 @@ import { UserSettings } from "src/core/game/UserSettings";
 import { z } from "zod";
 import { TokenPayload, TokenPayloadSchema } from "../core/ApiSchemas";
 import { base64urlToUuid } from "../core/Base64";
+import { UsernameSchema } from "../core/Schemas";
+import { MAX_USERNAME_LENGTH } from "../core/validations/username";
 import { getApiBase, getAudience } from "./Api";
 import { ClientEnv } from "./ClientEnv";
 import { generateCryptoRandomUUID } from "./Utils";
@@ -27,6 +29,55 @@ export function battlePersistentIdOverride(): string | null {
     const hash = window.location.hash.replace(/^#/, "");
     const pid = new URLSearchParams(hash).get(BATTLE_PID_HASH_PARAM);
     return pid && UUID_REGEX.test(pid) ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+// Embedded battles also pass the Hexah character name (#hexName=<name>) so the
+// player fights under their character instead of a generated anonymous handle.
+const BATTLE_NAME_HASH_PARAM = "hexName";
+
+// UsernameSchema only allows [a-zA-Z0-9_ üÜ.] — Hexah character names may
+// contain Polish diacritics, so transliterate them instead of dropping the
+// whole name.
+const POLISH_TRANSLITERATIONS: Record<string, string> = {
+  ą: "a",
+  ć: "c",
+  ę: "e",
+  ł: "l",
+  ń: "n",
+  ó: "o",
+  ś: "s",
+  ź: "z",
+  ż: "z",
+  Ą: "A",
+  Ć: "C",
+  Ę: "E",
+  Ł: "L",
+  Ń: "N",
+  Ó: "O",
+  Ś: "S",
+  Ź: "Z",
+  Ż: "Z",
+};
+
+export function sanitizeBattlePlayerName(raw: string): string | null {
+  const filtered = raw
+    .replace(/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/g, (ch) => POLISH_TRANSLITERATIONS[ch])
+    .replace(/[^a-zA-Z0-9_ üÜ.]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_USERNAME_LENGTH);
+  return UsernameSchema.safeParse(filtered).success ? filtered : null;
+}
+
+export function battlePlayerNameOverride(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const hash = window.location.hash.replace(/^#/, "");
+    const raw = new URLSearchParams(hash).get(BATTLE_NAME_HASH_PARAM);
+    return raw ? sanitizeBattlePlayerName(raw) : null;
   } catch {
     return null;
   }

@@ -26,10 +26,10 @@ import {
 } from "../core/Schemas";
 import { createPartialGameRecord } from "../core/Util";
 import { archive, finalizeGameRecord } from "./Archive";
-import { emitWildBattleResult } from "./WildBattleWebhook";
 import { Client } from "./Client";
 import { ClientMsgRateLimiter } from "./ClientMsgRateLimiter";
 import { ServerEnv } from "./ServerEnv";
+import { emitWildBattleResult } from "./WildBattleWebhook";
 export enum GamePhase {
   Lobby = "LOBBY",
   Active = "ACTIVE",
@@ -117,6 +117,14 @@ export class GameServer {
     return this.creatorPersistentID
       ? this.persistentIdToClientId.get(this.creatorPersistentID)
       : undefined;
+  }
+
+  // Internally created games (Hexah wild battles) have no host lobby UI, so
+  // nobody would ever send the start_game intent — start on creator join.
+  private autoStartOnCreatorJoin = false;
+
+  public enableAutoStartOnCreatorJoin(): void {
+    this.autoStartOnCreatorJoin = true;
   }
 
   public updateGameConfig(gameConfig: Partial<GameConfig>): void {
@@ -274,6 +282,18 @@ export class GameServer {
     this.allClients.set(client.clientID, client);
     this.addListeners(client);
     this.startLobbyInfoBroadcast();
+
+    if (
+      this.autoStartOnCreatorJoin &&
+      !this.hasStarted() &&
+      this.startsAt === undefined &&
+      client.persistentID === this.creatorPersistentID
+    ) {
+      this.log.info("creator joined internally created game, auto-starting", {
+        clientID: client.clientID,
+      });
+      this.setStartsAt(Date.now() + (this.gameConfig.startDelay ?? 0) * 1000);
+    }
 
     if (this.activeClients.length >= (this.gameConfig.maxPlayers ?? Infinity)) {
       this.hasReachedMaxPlayerCount = true;

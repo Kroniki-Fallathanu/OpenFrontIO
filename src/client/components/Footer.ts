@@ -1,6 +1,7 @@
 import { LitElement, html } from "lit";
 import { customElement } from "lit/decorators.js";
 import { assetUrl } from "../../core/AssetUrls";
+import { battlePersistentIdOverride } from "../Auth";
 import { ClientEnv } from "../ClientEnv";
 
 @customElement("page-footer")
@@ -10,6 +11,11 @@ export class Footer extends LitElement {
   }
 
   render() {
+    // Embedded Hexah battle iframe: the host game provides its own chrome,
+    // links out of the iframe would hijack the RPG session.
+    if (battlePersistentIdOverride() !== null) {
+      return html``;
+    }
     return html`
       <footer
         class="[.in-game_&]:hidden bg-zinc-900/90 backdrop-blur-md flex flex-col items-center justify-center gap-1 pt-1 pb-3 text-white/50 w-full border-t border-white/10 shrink-0 relative z-50"
