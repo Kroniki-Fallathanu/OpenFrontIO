@@ -110,10 +110,8 @@ const PL_SUPPLEMENT: Readonly<Record<string, string>> = {
   "events_display.atom_bomb_detonated": "{name} – kula ognia eksplodowała",
   "events_display.attack_cancelled_retreat":
     "Atak przerwany, {troops} żołnierzy zginęło podczas odwrotu",
-  "events_display.betrayal_debuff_ends":
-    "{time} s do końca kary za zdradę",
-  "events_display.conquered_no_gold":
-    "Podbito {name} (nie grał, brak złota)",
+  "events_display.betrayal_debuff_ends": "{time} s do końca kary za zdradę",
+  "events_display.conquered_no_gold": "Podbito {name} (nie grał, brak złota)",
   "events_display.hydrogen_bomb_detonated": "{name} – kataklizm eksplodował",
   "events_display.mirv_warheads_intercepted":
     "{count, plural, one {przechwycono {count} głowicę deszczu meteorów} few {przechwycono {count} głowice deszczu meteorów} many {przechwycono {count} głowic deszczu meteorów} other {przechwycono {count} głowic deszczu meteorów}}",
@@ -130,8 +128,7 @@ const PL_SUPPLEMENT: Readonly<Record<string, string>> = {
   "events_display.sent_gold_to_player": "Wysłano {gold} złota do {name}",
   "events_display.sent_troops_to_player": "Wysłano {troops} wojsk do {name}",
   "events_display.unit_destroyed": "Twój {unit} został zniszczony",
-  "events_display.wants_to_renew_alliance":
-    "{name} chce odnowić sojusz z Tobą",
+  "events_display.wants_to_renew_alliance": "{name} chce odnowić sojusz z Tobą",
 
   "fullscreen.enter": "Pełny ekran",
   "fullscreen.exit": "Wyjdź z pełnego ekranu",
@@ -596,8 +593,7 @@ const PL_SUPPLEMENT: Readonly<Record<string, string>> = {
   "user_setting.coordinate_grid_desc":
     "Przełącz alfanumeryczną siatkę współrzędnych",
   "user_setting.coordinate_grid_label": "Siatka współrzędnych",
-  "user_setting.cursor_cost_label_desc":
-    "Pokaż koszt pod ikoną kursora budowy",
+  "user_setting.cursor_cost_label_desc": "Pokaż koszt pod ikoną kursora budowy",
   "user_setting.cursor_cost_label_label": "Koszt budowy przy kursorze",
   "user_setting.development_only": "Tylko dla deweloperów",
   "user_setting.emoji_menu_modifier": "Modyfikator menu emoji",
@@ -627,8 +623,7 @@ const PL_SUPPLEMENT: Readonly<Record<string, string>> = {
     "Wstrzymaj lub wznów grę (tryb jednoosobowy i gry własne dla założyciela).",
   "user_setting.press_a_key": "Naciśnij klawisz",
   "user_setting.render_debug_gui": "Panel debugowania renderera",
-  "user_setting.render_debug_gui_desc":
-    "Przełącz panel strojenia renderera",
+  "user_setting.render_debug_gui_desc": "Przełącz panel strojenia renderera",
   "user_setting.request_alliance": "Zaproponuj sojusz",
   "user_setting.request_alliance_desc":
     "Wyślij prośbę o sojusz do gracza, którego pole jest pod kursorem.",
@@ -641,8 +636,7 @@ const PL_SUPPLEMENT: Readonly<Record<string, string>> = {
   "user_setting.toggle_visibility": "Przełącz widoczność",
 
   "username.tag": "TAG",
-  "username.tag_invalid_chars":
-    "Tag klanu może zawierać tylko litery i cyfry.",
+  "username.tag_invalid_chars": "Tag klanu może zawierać tylko litery i cyfry.",
   "username.tag_not_member":
     "Dołącz do klanu {tag}, zanim użyjesz jego tagu. Kliknij tę wiadomość, aby dołączyć.",
   "username.tag_too_long": "Tag klanu nie może przekraczać 5 znaków.",

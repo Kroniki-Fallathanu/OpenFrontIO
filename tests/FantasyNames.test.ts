@@ -1,8 +1,8 @@
 import {
-  fantasyBandName,
-  fantasyTribeName,
   FANTASY_BAND_KINDS,
   FANTASY_GENITIVES,
+  fantasyBandName,
+  fantasyTribeName,
   toFantasyTribes,
 } from "../src/core/execution/utils/FantasyNames";
 import { Cell, Nation, PlayerInfo, PlayerType } from "../src/core/game/Game";
@@ -14,7 +14,12 @@ function makeNations(count: number, random: PseudoRandom): Nation[] {
     nations.push(
       new Nation(
         new Cell(i, i * 2),
-        new PlayerInfo(`Manifest${i}`, PlayerType.Nation, null, random.nextID()),
+        new PlayerInfo(
+          `Manifest${i}`,
+          PlayerType.Nation,
+          null,
+          random.nextID(),
+        ),
       ),
     );
   }
