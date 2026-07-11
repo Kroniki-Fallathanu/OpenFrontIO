@@ -1,0 +1,59 @@
+{
+  "id": "WyspaWygnancow",
+  "name": "Wyspa Wygnańców",
+  "translation_key": "map.wyspawygnancow",
+  "categories": ["other"],
+  "multiplayer_frequency": 0,
+  "nations": [
+    {
+      "coordinates": [114, 358],
+      "name": "Osada Brzozowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [445, 36],
+      "name": "Gród Cierni",
+      "flag": ""
+    },
+    {
+      "coordinates": [21, 17],
+      "name": "Warownia Cisowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [473, 377],
+      "name": "Osada Mgielna",
+      "flag": ""
+    },
+    {
+      "coordinates": [228, 145],
+      "name": "Stanica Kruków",
+      "flag": ""
+    },
+    {
+      "coordinates": [379, 232],
+      "name": "Obóz Wilczy",
+      "flag": ""
+    },
+    {
+      "coordinates": [283, 392],
+      "name": "Gród Turów",
+      "flag": ""
+    },
+    {
+      "coordinates": [59, 168],
+      "name": "Osada Wrzosowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [492, 166],
+      "name": "Warownia Skalna",
+      "flag": ""
+    },
+    {
+      "coordinates": [189, 16],
+      "name": "Osada Bobrów",
+      "flag": ""
+    }
+  ]
+}

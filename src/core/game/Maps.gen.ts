@@ -21,6 +21,7 @@ export enum GameMapType {
   BeringStrait = "Bering Strait", // map-generator/assets/maps/beringstrait/info.json
   BetweenTwoSeas = "Between Two Seas", // map-generator/assets/maps/betweentwoseas/info.json
   BlackSea = "Black Sea", // map-generator/assets/maps/blacksea/info.json
+  BlizniaczeKotliny = "Bliźniacze Kotliny", // map-generator/assets/maps/blizniaczekotliny/info.json
   BosphorusStraits = "Bosphorus Straits", // map-generator/assets/maps/bosphorusstraits/info.json
   Britannia = "Britannia", // map-generator/assets/maps/britannia/info.json
   BritanniaClassic = "Britannia Classic", // map-generator/assets/maps/britanniaclassic/info.json
@@ -32,6 +33,8 @@ export enum GameMapType {
   DeglaciatedAntarctica = "Deglaciated Antarctica", // map-generator/assets/maps/deglaciatedantarctica/info.json
   Didier = "Didier", // map-generator/assets/maps/didier/info.json
   DidierFrance = "Didier France", // map-generator/assets/maps/didierfrance/info.json
+  DolinaBrodu = "Dolina Brodu", // map-generator/assets/maps/dolinabrodu/info.json
+  DwaJeziora = "Dwa Jeziora", // map-generator/assets/maps/dwajeziora/info.json
   Dyslexdria = "Dyslexdria", // map-generator/assets/maps/dyslexdria/info.json
   EastAsia = "East Asia", // map-generator/assets/maps/eastasia/info.json
   Europe = "Europe", // map-generator/assets/maps/europe/info.json
@@ -42,6 +45,7 @@ export enum GameMapType {
   GatewayToTheAtlantic = "Gateway to the Atlantic", // map-generator/assets/maps/gatewaytotheatlantic/info.json
   GiantWorldMap = "Giant World Map", // map-generator/assets/maps/giantworldmap/info.json
   GreatLakes = "Great Lakes", // map-generator/assets/maps/greatlakes/info.json
+  GrzbietSmoka = "Grzbiet Smoka", // map-generator/assets/maps/grzbietsmoka/info.json
   GulfOfStLawrence = "Gulf of St. Lawrence", // map-generator/assets/maps/gulfofstlawrence/info.json
   Halkidiki = "Halkidiki", // map-generator/assets/maps/halkidiki/info.json
   Hawaii = "Hawaii", // map-generator/assets/maps/hawaii/info.json
@@ -52,6 +56,8 @@ export enum GameMapType {
   Japan = "Japan", // map-generator/assets/maps/japan/info.json
   JuanDeFucaStrait = "Juan De Fuca Strait", // map-generator/assets/maps/juandefucastrait/info.json
   Korea = "Korea", // map-generator/assets/maps/korea/info.json
+  KotlinaTraw = "Kotlina Traw", // map-generator/assets/maps/kotlinatraw/info.json
+  LabiryntGrani = "Labirynt Grani", // map-generator/assets/maps/labiryntgrani/info.json
   Labyrinth = "Labyrinth", // map-generator/assets/maps/labyrinth/info.json
   Lemnos = "Lemnos", // map-generator/assets/maps/lemnos/info.json
   Lisbon = "Lisbon", // map-generator/assets/maps/lisbon/info.json
@@ -78,6 +84,7 @@ export enum GameMapType {
   Sierpinski = "Sierpinski", // map-generator/assets/maps/sierpinski/info.json
   SouthAmerica = "South America", // map-generator/assets/maps/southamerica/info.json
   SoutheastAsia = "SoutheastAsia", // map-generator/assets/maps/southeastasia/info.json
+  StepDzikich = "Step Dzikich", // map-generator/assets/maps/stepdzikich/info.json
   StraitOfGibraltar = "Strait of Gibraltar", // map-generator/assets/maps/straitofgibraltar/info.json
   StraitOfHormuz = "Strait of Hormuz", // map-generator/assets/maps/straitofhormuz/info.json
   StraitOfMalacca = "Strait Of Malacca", // map-generator/assets/maps/straitofmalacca/info.json
@@ -95,8 +102,11 @@ export enum GameMapType {
   Venice = "Venice", // map-generator/assets/maps/venice/info.json
   World = "World", // map-generator/assets/maps/world/info.json
   WorldInverted = "World Inverted", // map-generator/assets/maps/worldinverted/info.json
+  Wrzosowiska = "Wrzosowiska", // map-generator/assets/maps/wrzosowiska/info.json
+  WyspaWygnancow = "Wyspa Wygnańców", // map-generator/assets/maps/wyspawygnancow/info.json
   YellowSea = "Yellow Sea", // map-generator/assets/maps/yellowsea/info.json
   Yenisei = "Yenisei", // map-generator/assets/maps/yenisei/info.json
+  ZmijowaRzeka = "Żmijowa Rzeka", // map-generator/assets/maps/zmijowarzeka/info.json
 }
 
 export type GameMapName = keyof typeof GameMapType;
@@ -282,6 +292,13 @@ export const maps: readonly MapInfo[] = [
     multiplayerFrequency: 6,
   },
   {
+    id: "BlizniaczeKotliny",
+    type: GameMapType.BlizniaczeKotliny,
+    translationKey: "map.blizniaczekotliny",
+    categories: ["other"],
+    multiplayerFrequency: 0,
+  },
+  {
     id: "BosphorusStraits",
     type: GameMapType.BosphorusStraits,
     translationKey: "map.bosphorusstraits",
@@ -362,6 +379,20 @@ export const maps: readonly MapInfo[] = [
     multiplayerFrequency: 1,
   },
   {
+    id: "DolinaBrodu",
+    type: GameMapType.DolinaBrodu,
+    translationKey: "map.dolinabrodu",
+    categories: ["other"],
+    multiplayerFrequency: 0,
+  },
+  {
+    id: "DwaJeziora",
+    type: GameMapType.DwaJeziora,
+    translationKey: "map.dwajeziora",
+    categories: ["other"],
+    multiplayerFrequency: 0,
+  },
+  {
     id: "Dyslexdria",
     type: GameMapType.Dyslexdria,
     translationKey: "map.dyslexdria",
@@ -435,6 +466,13 @@ export const maps: readonly MapInfo[] = [
     multiplayerFrequency: 6,
   },
   {
+    id: "GrzbietSmoka",
+    type: GameMapType.GrzbietSmoka,
+    translationKey: "map.grzbietsmoka",
+    categories: ["other"],
+    multiplayerFrequency: 0,
+  },
+  {
     id: "GulfOfStLawrence",
     type: GameMapType.GulfOfStLawrence,
     translationKey: "map.gulfofstlawrence",
@@ -506,6 +544,20 @@ export const maps: readonly MapInfo[] = [
     translationKey: "map.korea",
     categories: ["asia"],
     multiplayerFrequency: 5,
+  },
+  {
+    id: "KotlinaTraw",
+    type: GameMapType.KotlinaTraw,
+    translationKey: "map.kotlinatraw",
+    categories: ["other"],
+    multiplayerFrequency: 0,
+  },
+  {
+    id: "LabiryntGrani",
+    type: GameMapType.LabiryntGrani,
+    translationKey: "map.labiryntgrani",
+    categories: ["other"],
+    multiplayerFrequency: 0,
   },
   {
     id: "Labyrinth",
@@ -694,6 +746,13 @@ export const maps: readonly MapInfo[] = [
     multiplayerFrequency: 5,
   },
   {
+    id: "StepDzikich",
+    type: GameMapType.StepDzikich,
+    translationKey: "map.stepdzikich",
+    categories: ["other"],
+    multiplayerFrequency: 0,
+  },
+  {
     id: "StraitOfGibraltar",
     type: GameMapType.StraitOfGibraltar,
     translationKey: "map.straitofgibraltar",
@@ -818,6 +877,20 @@ export const maps: readonly MapInfo[] = [
     multiplayerFrequency: 8,
   },
   {
+    id: "Wrzosowiska",
+    type: GameMapType.Wrzosowiska,
+    translationKey: "map.wrzosowiska",
+    categories: ["other"],
+    multiplayerFrequency: 0,
+  },
+  {
+    id: "WyspaWygnancow",
+    type: GameMapType.WyspaWygnancow,
+    translationKey: "map.wyspawygnancow",
+    categories: ["other"],
+    multiplayerFrequency: 0,
+  },
+  {
     id: "YellowSea",
     type: GameMapType.YellowSea,
     translationKey: "map.yellowsea",
@@ -830,5 +903,12 @@ export const maps: readonly MapInfo[] = [
     translationKey: "map.yenisei",
     categories: ["asia"],
     multiplayerFrequency: 6,
+  },
+  {
+    id: "ZmijowaRzeka",
+    type: GameMapType.ZmijowaRzeka,
+    translationKey: "map.zmijowarzeka",
+    categories: ["other"],
+    multiplayerFrequency: 0,
   },
 ];

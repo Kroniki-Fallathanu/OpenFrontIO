@@ -1,0 +1,74 @@
+{
+  "categories": ["other"],
+  "id": "GrzbietSmoka",
+  "map": {
+    "height": 384,
+    "num_land_tiles": 191366,
+    "width": 512
+  },
+  "map16x": {
+    "height": 96,
+    "num_land_tiles": 11887,
+    "width": 128
+  },
+  "map4x": {
+    "height": 192,
+    "num_land_tiles": 47748,
+    "width": 256
+  },
+  "multiplayer_frequency": 0,
+  "name": "Grzbiet Smoka",
+  "nations": [
+    {
+      "coordinates": [299, 155],
+      "flag": "",
+      "name": "Osada Brzozowa"
+    },
+    {
+      "coordinates": [26, 367],
+      "flag": "",
+      "name": "Gród Cierni"
+    },
+    {
+      "coordinates": [495, 364],
+      "flag": "",
+      "name": "Warownia Cisowa"
+    },
+    {
+      "coordinates": [56, 20],
+      "flag": "",
+      "name": "Osada Mgielna"
+    },
+    {
+      "coordinates": [491, 16],
+      "flag": "",
+      "name": "Stanica Kruków"
+    },
+    {
+      "coordinates": [245, 344],
+      "flag": "",
+      "name": "Obóz Wilczy"
+    },
+    {
+      "coordinates": [104, 232],
+      "flag": "",
+      "name": "Gród Turów"
+    },
+    {
+      "coordinates": [430, 227],
+      "flag": "",
+      "name": "Osada Wrzosowa"
+    },
+    {
+      "coordinates": [233, 32],
+      "flag": "",
+      "name": "Warownia Skalna"
+    },
+    {
+      "coordinates": [17, 149],
+      "flag": "",
+      "name": "Osada Bobrów"
+    }
+  ],
+  "translation_key": "map.grzbietsmoka"
+}

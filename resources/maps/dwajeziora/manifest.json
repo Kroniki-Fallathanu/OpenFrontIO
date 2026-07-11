@@ -1,0 +1,74 @@
+{
+  "categories": ["other"],
+  "id": "DwaJeziora",
+  "map": {
+    "height": 384,
+    "num_land_tiles": 176937,
+    "width": 512
+  },
+  "map16x": {
+    "height": 96,
+    "num_land_tiles": 10951,
+    "width": 128
+  },
+  "map4x": {
+    "height": 192,
+    "num_land_tiles": 44088,
+    "width": 256
+  },
+  "multiplayer_frequency": 0,
+  "name": "Dwa Jeziora",
+  "nations": [
+    {
+      "coordinates": [370, 311],
+      "flag": "",
+      "name": "Osada Brzozowa"
+    },
+    {
+      "coordinates": [18, 16],
+      "flag": "",
+      "name": "Gród Cierni"
+    },
+    {
+      "coordinates": [46, 366],
+      "flag": "",
+      "name": "Warownia Cisowa"
+    },
+    {
+      "coordinates": [491, 81],
+      "flag": "",
+      "name": "Osada Mgielna"
+    },
+    {
+      "coordinates": [196, 160],
+      "flag": "",
+      "name": "Stanica Kruków"
+    },
+    {
+      "coordinates": [298, 16],
+      "flag": "",
+      "name": "Obóz Wilczy"
+    },
+    {
+      "coordinates": [17, 205],
+      "flag": "",
+      "name": "Gród Turów"
+    },
+    {
+      "coordinates": [359, 138],
+      "flag": "",
+      "name": "Osada Wrzosowa"
+    },
+    {
+      "coordinates": [145, 287],
+      "flag": "",
+      "name": "Warownia Skalna"
+    },
+    {
+      "coordinates": [453, 216],
+      "flag": "",
+      "name": "Osada Bobrów"
+    }
+  ],
+  "translation_key": "map.dwajeziora"
+}
