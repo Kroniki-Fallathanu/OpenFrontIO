@@ -1,7 +1,9 @@
 import { html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { Product } from "../../core/CosmeticSchemas";
+import type { PurchaseResult } from "../Cosmetics";
 import "./PurchaseButton";
+import type { PurchaseButton } from "./PurchaseButton";
 
 type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary" | string;
 
@@ -167,13 +169,13 @@ export class CosmeticContainer extends LitElement {
   priceSuffix: string = "";
 
   @property({ type: Function })
-  onPurchaseDollar?: () => void;
+  onPurchaseDollar?: () => Promise<PurchaseResult>;
 
   @property({ type: Function })
-  onPurchaseHard?: () => void;
+  onPurchaseHard?: () => Promise<PurchaseResult>;
 
   @property({ type: Function })
-  onPurchaseSoft?: () => void;
+  onPurchaseSoft?: () => Promise<PurchaseResult>;
 
   private static _backdrop: HTMLDivElement | null = null;
   private static _ensureBackdrop(): HTMLDivElement {
@@ -342,11 +344,32 @@ export class CosmeticContainer extends LitElement {
       this.onPurchaseSoft,
     ].filter(Boolean);
     if (handlers.length === 1 && !this._loading) {
+      // Currency purchases go through the confirmation dialog instead of
+      // firing immediately.
+      if (
+        handlers[0] === this.onPurchaseHard ||
+        handlers[0] === this.onPurchaseSoft
+      ) {
+        (
+          this.querySelector("purchase-button") as PurchaseButton | null
+        )?.requestCurrencyPurchase(
+          handlers[0] === this.onPurchaseHard ? "hard" : "soft",
+        );
+        return;
+      }
       this._loading = true;
       this._showLoadingOverlay();
-      Promise.resolve(handlers[0]!()).finally(() => {
-        this._hideLoadingOverlay();
-      });
+      Promise.resolve(handlers[0]!())
+        .then((result) => {
+          if (result) {
+            (
+              this.querySelector("purchase-button") as PurchaseButton | null
+            )?.showInsufficient(result);
+          }
+        })
+        .finally(() => {
+          this._hideLoadingOverlay();
+        });
     }
   };
 
@@ -458,6 +481,7 @@ export class CosmeticContainer extends LitElement {
             .rarity=${this.rarity}
             .dollarLabelKey=${this.dollarLabelKey}
             .priceSuffix=${this.priceSuffix}
+            .itemName=${this.name}
             .onPurchaseDollar=${this.onPurchaseDollar}
             .onPurchaseHard=${this.onPurchaseHard}
             .onPurchaseSoft=${this.onPurchaseSoft}

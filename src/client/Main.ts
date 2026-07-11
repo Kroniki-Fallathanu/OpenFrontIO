@@ -15,11 +15,15 @@ import { GameType } from "../core/game/Game";
 import { UserSettings } from "../core/game/UserSettings";
 import "./AccountModal";
 import { getUserMe, invalidateUserMe } from "./Api";
-import { userAuth } from "./Auth";
+import { reauthAfterCrazyGamesChange, userAuth } from "./Auth";
 import "./ClanModal";
 import { joinLobby, type JoinLobbyResult } from "./ClientGameRunner";
 import { getPlayerCosmeticsRefs } from "./Cosmetics";
+import { updateCrazyGamesNavButton } from "./CrazyGamesAccountButton";
 import { crazyGamesSDK } from "./CrazyGamesSDK";
+import "./EffectsInput";
+import "./EffectsModal";
+import { EffectsModal } from "./EffectsModal";
 import "./FlagInput";
 import { FlagInput } from "./FlagInput";
 import "./FlagInputModal";
@@ -32,6 +36,7 @@ import "./GoogleAdElement";
 import { HelpModal } from "./HelpModal";
 import "./HomepagePromos";
 import { HostLobbyModal as HostPrivateLobbyModal } from "./HostLobbyModal";
+import { showInGameConfirm } from "./InGameModal";
 import { JoinLobbyModal } from "./JoinLobbyModal";
 import "./LangSelector";
 import { LangSelector } from "./LangSelector";
@@ -43,6 +48,7 @@ import { modalRouter } from "./ModalRouter";
 import { initNavigation } from "./Navigation";
 import "./NewsModal";
 import "./PatternInput";
+import { RewardsModal } from "./RewardsModal";
 import "./SinglePlayerModal";
 import { StoreModal } from "./Store";
 import "./TerritoryPatternsModal";
@@ -62,6 +68,7 @@ import {
   isInIframe,
   translateText,
 } from "./Utils";
+import "./components/MarketingConsentToast";
 import { installSafariPinchZoomBlocker } from "./utilities/DisableSafariPinchZoom";
 
 import "./components/DesktopNavBar";
@@ -177,6 +184,7 @@ declare global {
   interface Window {
     turnstile: any;
     adsEnabled: boolean;
+    gtag?: (...args: any[]) => void;
     PageOS: {
       session: {
         newPageView: () => void;
@@ -259,6 +267,7 @@ class Client {
   private storeModal: StoreModal;
   private tokenLoginModal: TokenLoginModal;
   private matchmakingModal: MatchmakingModal;
+  private rewardsModal: RewardsModal;
   private mostRecentJoinEvent: number;
 
   private turnstileTokenPromise: Promise<{
@@ -311,6 +320,7 @@ class Client {
       tag: "territory-patterns-modal",
     });
     modalRouter.register("flag-input", { tag: "flag-input-modal" });
+    modalRouter.register("effects", { tag: "effects-modal" });
 
     // Prefetch turnstile token so it is available when
     // the user joins a lobby.
@@ -421,6 +431,20 @@ class Client {
       });
     });
 
+    const effectsModal = document.querySelector(
+      "effects-modal",
+    ) as EffectsModal;
+    if (!effectsModal || !(effectsModal instanceof EffectsModal)) {
+      console.warn("Effects modal element not found");
+    }
+    document.querySelectorAll("effects-input").forEach((effectsInput) => {
+      effectsInput.addEventListener("effects-input-click", () => {
+        if (effectsModal && effectsModal instanceof EffectsModal) {
+          effectsModal.open();
+        }
+      });
+    });
+
     this.storeModal = document.getElementById("page-item-store") as StoreModal;
     if (!this.storeModal || !(this.storeModal instanceof StoreModal)) {
       console.warn("Store modal element not found");
@@ -483,8 +507,17 @@ class Client {
       console.warn("Matchmaking modal element not found");
     }
 
+    this.rewardsModal = document.querySelector("rewards-modal") as RewardsModal;
+    if (!this.rewardsModal || !(this.rewardsModal instanceof RewardsModal)) {
+      console.warn("Rewards modal element not found");
+    }
+
     const onUserMe = async (userMeResponse: UserMeResponse | false) => {
-      updateAccountNavButton(userMeResponse);
+      if (crazyGamesSDK.isOnCrazyGames()) {
+        void updateCrazyGamesNavButton();
+      } else {
+        updateAccountNavButton(userMeResponse);
+      }
       const isAdFree =
         userMeResponse !== false && userMeResponse.player?.adfree === true;
       window.adsEnabled = !isAdFree && !crazyGamesSDK.isOnCrazyGames();
@@ -502,6 +535,17 @@ class Client {
           `Your player ID is ${userMeResponse.player.publicId}\n` +
             "Sharing this ID will allow others to view your game history and stats.",
         );
+
+        // Unclaimed-rewards popup — only on a clean homepage load, never over
+        // a deep link (join URL, #modal=..., #purchase-completed, ...).
+        const rewards = userMeResponse.player.rewards ?? [];
+        if (
+          rewards.length > 0 &&
+          window.location.pathname === "/" &&
+          window.location.hash === ""
+        ) {
+          this.rewardsModal?.openWithRewards(rewards);
+        }
       }
     };
 
@@ -513,6 +557,15 @@ class Client {
       // TODO: Add caching
       getUserMe().then(onUserMe);
     }
+
+    // Re-run auth when the player signs into CrazyGames mid-session. Logout
+    // reloads the page, so only login needs handling here.
+    crazyGamesSDK.addAuthListener(() => {
+      invalidateUserMe();
+      reauthAfterCrazyGamesChange().then((result) =>
+        result === false ? onUserMe(false) : getUserMe().then(onUserMe),
+      );
+    });
 
     const settingsModal = document.querySelector(
       "user-setting",
@@ -567,6 +620,13 @@ class Client {
       onJoinChanged();
     };
 
+    const leaveGame = () => {
+      crazyGamesSDK.gameplayStop().then(() => {
+        // redirect to the home page
+        window.location.href = "/";
+      });
+    };
+
     const onPopState = () => {
       if (this.currentUrl !== null && this.lobbyHandle !== null) {
         console.info("Game is active");
@@ -574,23 +634,20 @@ class Client {
         if (!this.lobbyHandle.stop()) {
           console.info("Player is active, ask before leaving game");
 
-          const isConfirmed = confirm(
-            translateText("help_modal.exit_confirmation"),
+          // We can't block navigation on an async confirmation, so restore the
+          // history entry immediately and only leave once the player confirms.
+          history.pushState(null, "", this.currentUrl);
+          showInGameConfirm(translateText("help_modal.exit_confirmation")).then(
+            (isConfirmed) => {
+              if (isConfirmed) leaveGame();
+            },
           );
-
-          if (!isConfirmed) {
-            // Rollback navigator history
-            history.pushState(null, "", this.currentUrl);
-            return;
-          }
+          return;
         }
 
         console.info("Player is not active, leave the game immediately");
 
-        crazyGamesSDK.gameplayStop().then(() => {
-          // redirect to the home page
-          window.location.href = "/";
-        });
+        leaveGame();
       } else {
         console.info("Game not active, handle hash update");
 
@@ -695,6 +752,13 @@ class Client {
         return;
       }
 
+      if (type === "custom_currency") {
+        // Plutonium is credited asynchronously by the Stripe webhook; the
+        // balance refreshes from /users/@me on the next load.
+        alertAndStrip(translateText("store.custom_currency_purchase_success"));
+        return;
+      }
+
       if (type === "subscription_tier") {
         alert(translateText("store.subscription_purchase_success"));
         strip();
@@ -756,6 +820,21 @@ class Client {
     const lobbyId =
       pathMatch && GAME_ID_REGEX.test(pathMatch[1]) ? pathMatch[1] : null;
     if (lobbyId) {
+      // ?host means the lobby creator is returning to a successor lobby they
+      // reused from the win screen: reopen the host view bound to the existing
+      // lobby instead of the join flow. Non-creators who hit this URL still get
+      // treated as normal joiners by the server.
+      const returningAsHost = new URLSearchParams(window.location.search).has(
+        "host",
+      );
+      if (returningAsHost) {
+        // open() reveals the inline page itself (it calls showPage internally).
+        // Calling showPage first would open the modal once with no args and
+        // spuriously create a lobby before this attach call runs.
+        this.hostModal.open({ existingLobbyId: lobbyId });
+        console.log(`reopening host lobby ${lobbyId}`);
+        return;
+      }
       window.showPage?.("page-join-lobby");
       this.joinModal.open({ lobbyId });
       console.log(`joining lobby ${lobbyId}`);
@@ -850,10 +929,17 @@ class Client {
       document
         .getElementById("username-validation-error")
         ?.classList.add("hidden");
+      // Disarm BOTH lobby modals before closing either: closing any
+      // page-modal navigates via showPage, which force-closes the currently
+      // visible page — the other lobby modal. If that one is still armed,
+      // its onClose leaves the lobby and disconnects the player mid
+      // game-start (host or joiner, depending on close order).
+      this.hostModal?.disarmLeaveOnClose();
+      this.joinModal?.disarmLeaveOnClose();
+      this.hostModal?.closeWithoutLeaving();
       this.joinModal?.closeWithoutLeaving();
       [
         "single-player-modal",
-        "host-lobby-modal",
         "game-starting-modal",
         "game-top-bar",
         "help-modal",
@@ -864,6 +950,7 @@ class Client {
         "language-modal",
         "news-modal",
         "flag-input-modal",
+        "effects-modal",
         "account-button",
         "leaderboard-button",
         "token-login",
@@ -1068,6 +1155,10 @@ const bootstrap = () => {
   // Also hide elements after a short delay to catch late-rendered components
   setTimeout(hideCrazyGamesElements, 100);
   setTimeout(hideCrazyGamesElements, 500);
+
+  // Populate the CrazyGames account buttons once the nav/top-bar have rendered
+  // (onUserMe also refreshes them after auth and on mid-session sign-in).
+  setTimeout(() => void updateCrazyGamesNavButton(), 500);
 };
 
 if (document.readyState === "loading") {

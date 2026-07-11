@@ -1,7 +1,9 @@
 import { html, LitElement, nothing, TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import {
+  Effect,
   Flag,
+  isNukeExplosionEffect,
   Pack,
   Pattern,
   Skin,
@@ -10,6 +12,7 @@ import {
 import { PlayerPattern } from "../../core/Schemas";
 import {
   PaymentMethod,
+  PurchaseResult,
   ResolvedCosmetic,
   translateCosmetic,
 } from "../Cosmetics";
@@ -17,6 +20,7 @@ import { translateText } from "../Utils";
 import "./CapIcon";
 import "./CosmeticContainer";
 import "./CosmeticInfo";
+import "./EffectPreview"; // registers <trail-swatch>, <shockwave-swatch>, <sparkles-swatch>
 import { renderPatternPreview } from "./PatternPreview";
 import "./PlutoniumIcon";
 
@@ -32,7 +36,10 @@ export class CosmeticButton extends LitElement {
   onSelect?: (resolved: ResolvedCosmetic) => void;
 
   @property({ type: Function })
-  onPurchase?: (resolved: ResolvedCosmetic, method: PaymentMethod) => void;
+  onPurchase?: (
+    resolved: ResolvedCosmetic,
+    method: PaymentMethod,
+  ) => Promise<PurchaseResult>;
 
   /** True if the user already has a subscription (any tier). */
   @property({ type: Boolean })
@@ -80,6 +87,9 @@ export class CosmeticButton extends LitElement {
     }
     if (this.activeResolved.type === "subscription") {
       return translateCosmetic("subscriptions", c.name);
+    }
+    if (this.activeResolved.type === "effect") {
+      return translateCosmetic("effects", c.name);
     }
     return translateCosmetic("flags", c.name);
   }
@@ -165,6 +175,38 @@ export class CosmeticButton extends LitElement {
         draggable="false"
         loading="lazy"
       />`;
+    }
+
+    if (this.activeResolved.type === "effect") {
+      const c = this.activeResolved.cosmetic as Effect | null;
+      if (c === null) {
+        // "Default" tile — selecting it clears the effect for that type.
+        return html`<div
+          class="w-full h-full flex items-center justify-center text-white/40 text-xs uppercase"
+        >
+          ${translateText("territory_patterns.pattern.default")}
+        </div>`;
+      }
+      // Nuke explosions preview per visual type (expanding ring or sparkle
+      // burst); every trail effectType (transportShipTrail, nukeTrail) and the
+      // structures effect share the same attribute shapes and preview as a
+      // color swatch.
+      if (isNukeExplosionEffect(c)) {
+        if (c.attributes.type === "sparkles") {
+          return html`<sparkles-swatch
+            class="block w-full h-full"
+            .explosion=${c.attributes}
+          ></sparkles-swatch>`;
+        }
+        return html`<shockwave-swatch
+          class="block w-full h-full"
+          .explosion=${c.attributes}
+        ></shockwave-swatch>`;
+      }
+      return html`<trail-swatch
+        class="block w-full h-full"
+        .trail=${c.attributes}
+      ></trail-swatch>`;
     }
 
     if (this.activeResolved.type === "pack") {
@@ -254,7 +296,7 @@ export class CosmeticButton extends LitElement {
   render() {
     const active = this.activeResolved;
     const c = active.cosmetic;
-    const priced = c as Pattern | Skin | Flag | Pack | null;
+    const priced = c as Pattern | Skin | Flag | Effect | Pack | null;
     const priceHard = priced?.priceHard;
     const priceSoft = priced?.priceSoft;
     const artist = priced?.artist;
@@ -264,6 +306,10 @@ export class CosmeticButton extends LitElement {
     const isSkin = type === "skin";
     const isOwnedSubscription =
       type === "subscription" && active.relationship === "owned";
+    // Equivalent USD value at 20 plutonium = $1.00, shown only for items that
+    // can't be bought directly with money but can be bought with plutonium.
+    const usdValue =
+      !c?.product && priceHard !== undefined ? priceHard / 20 : undefined;
     // Switching tiers shows "Switch"; a first-time subscribe shows price only.
     const dollarLabelKey =
       type === "subscription" && this.userHasSubscription
@@ -290,13 +336,13 @@ export class CosmeticButton extends LitElement {
         .dollarLabelKey=${dollarLabelKey}
         .priceSuffix=${priceSuffix}
         .onPurchaseDollar=${isPurchasable && c?.product
-          ? () => this.onPurchase?.(this.activeResolved, "dollar")
+          ? async () => this.onPurchase?.(this.activeResolved, "dollar")
           : undefined}
         .onPurchaseHard=${isPurchasable && priceHard !== undefined
-          ? () => this.onPurchase?.(this.activeResolved, "hard")
+          ? async () => this.onPurchase?.(this.activeResolved, "hard")
           : undefined}
         .onPurchaseSoft=${isPurchasable && priceSoft !== undefined
-          ? () => this.onPurchase?.(this.activeResolved, "soft")
+          ? async () => this.onPurchase?.(this.activeResolved, "soft")
           : undefined}
         .name=${this.displayName}
       >
@@ -315,6 +361,7 @@ export class CosmeticButton extends LitElement {
                 .rarity=${c!.rarity}
                 .colorPalette=${active.colorPalette?.name}
                 .showAdFree=${isPurchasable}
+                .usdValue=${usdValue}
               ></cosmetic-info>`
             : nothing}
 
