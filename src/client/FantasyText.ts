@@ -7,6 +7,9 @@ import { ClientEnv } from "./ClientEnv";
  */
 const FANTASY_TEXT_PL: Readonly<Record<string, string>> = {
   "main.title": "Dzikie Ziemie - Hexah",
+  // Nacje to w Dzikich Ziemiach plemiona, a boty - bezimienni dzicy.
+  "player_type.nation": "Plemię",
+  "player_type.bot": "Dzicy",
   "unit_type.city": "Twierdza",
   "unit_type.port": "Przystań",
   "unit_type.factory": "Kuźnia",

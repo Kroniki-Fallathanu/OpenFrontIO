@@ -713,3 +713,13 @@ html.hexah-embedded game-starting-modal,
 html.hexah-embedded page-footer footer {
   display: none !important;
 }
+
+/*
+ * The post-battle screen belongs to the host RPG (an opaque result overlay
+ * with its own return button) — the fork's own win/lose dialog would show
+ * through underneath it and its exit/keep-playing buttons make no sense
+ * inside the embed.
+ */
+html.hexah-embedded win-modal {
+  display: none !important;
+}
