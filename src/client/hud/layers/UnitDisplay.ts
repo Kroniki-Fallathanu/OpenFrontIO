@@ -15,6 +15,7 @@ import { ToggleStructureEvent } from "../../InputHandler";
 import { UIState } from "../../UIState";
 import { renderNumber, translateText } from "../../Utils";
 import { GameView } from "../../view";
+import { structureHudIcon } from "../FantasyStructureIcons";
 const warshipIcon = assetUrl("images/BattleshipIconWhite.svg");
 const cityIcon = assetUrl("images/CityIconWhite.svg");
 const factoryIcon = assetUrl("images/FactoryIconWhite.svg");
@@ -208,6 +209,7 @@ export class UnitDisplay extends LitElement implements Controller {
     if (this.game.config().isUnitDisabled(unitType)) {
       return html``;
     }
+    icon = structureHudIcon(unitType, icon);
     const selected = this.uiState.ghostStructure === unitType;
     const hovered = this._hoveredUnit === unitType;
     const displayHotkey = hotkey
