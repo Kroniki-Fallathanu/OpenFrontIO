@@ -35,7 +35,10 @@ describe("emitWildBattleResult", () => {
 
   test("POST z podpisem HMAC-SHA256 nad surowym ciałem, gdy env ustawione", async () => {
     const secret = "topsecret";
-    vi.stubEnv("RESULT_WEBHOOK_URL", "http://hexah:1337/api/hex-map-wilds/result");
+    vi.stubEnv(
+      "RESULT_WEBHOOK_URL",
+      "http://hexah:1337/api/hex-map-wilds/result",
+    );
     vi.stubEnv("RESULT_WEBHOOK_SECRET", secret);
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     vi.stubGlobal("fetch", fetchMock);

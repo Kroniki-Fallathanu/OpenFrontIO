@@ -40,7 +40,9 @@ export async function renderHtmlContent(htmlPath: string): Promise<string> {
       cdnBase,
     ),
     backgroundImageUrl: buildAssetUrl(
-      ServerEnv.fantasyTheme() ? "images/hexah-bg.jpg" : "images/background.webp",
+      ServerEnv.fantasyTheme()
+        ? "images/hexah-bg.jpg"
+        : "images/background.webp",
       assetManifest,
       cdnBase,
     ),
