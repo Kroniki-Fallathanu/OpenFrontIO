@@ -3,6 +3,7 @@ import { Config } from "./configuration/Config";
 import { Executor } from "./execution/ExecutionManager";
 import { RecomputeRailClusterExecution } from "./execution/RecomputeRailClusterExecution";
 import { SpawnTimerExecution } from "./execution/SpawnTimerExecution";
+import { toFantasyTribes } from "./execution/utils/FantasyNames";
 import { WinCheckExecution } from "./execution/WinCheckExecution";
 import {
   AllPlayers,
@@ -57,11 +58,16 @@ export async function createGameRunner(
     );
   });
 
-  const nations = createNationsForGame(
-    gameStart,
-    gameMap.nations,
-    gameMap.additionalNations,
-    humans.length,
+  // Hexah fork: nations play as fantasy tribes — manifest selection (spawn
+  // cells, counts) stays upstream, only the names are replaced.
+  const nations = toFantasyTribes(
+    createNationsForGame(
+      gameStart,
+      gameMap.nations,
+      gameMap.additionalNations,
+      humans.length,
+      random,
+    ),
     random,
   );
 

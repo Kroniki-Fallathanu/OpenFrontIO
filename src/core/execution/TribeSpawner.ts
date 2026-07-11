@@ -3,7 +3,7 @@ import { PseudoRandom } from "../PseudoRandom";
 import { GameID } from "../Schemas";
 import { simpleHash } from "../Util";
 import { SpawnExecution } from "./SpawnExecution";
-import { TRIBE_NAME_PREFIXES, TRIBE_NAME_SUFFIXES } from "./utils/TribeNames";
+import { fantasyBandName } from "./utils/FantasyNames";
 
 export class TribeSpawner {
   private random: PseudoRandom;
@@ -33,8 +33,8 @@ export class TribeSpawner {
   }
 
   private randomTribeName(): string {
-    const prefixIndex = this.random.nextInt(0, TRIBE_NAME_PREFIXES.length);
-    const suffixIndex = this.random.nextInt(0, TRIBE_NAME_SUFFIXES.length);
-    return `${TRIBE_NAME_PREFIXES[prefixIndex]} ${TRIBE_NAME_SUFFIXES[suffixIndex]}`;
+    // Hexah fork: bots roam the Wild Lands as fantasy bands instead of the
+    // upstream historical civilisations.
+    return fantasyBandName(this.random);
   }
 }
