@@ -92,14 +92,14 @@ export class NamePass {
 
   // CPU-side mirrors — batched upload in draw()
   private cpuPlayerData: Float32Array;
-  private cpuStringData: Uint8Array;
+  private cpuStringData: Uint16Array;
   private cpuCursorData: Float32Array;
   private playerDataDirty = false;
   private stringDataDirty = false;
   private cursorDataDirty = false;
 
   // Reusable buffers for text layout
-  private stringRow: Uint8Array;
+  private stringRow: Uint16Array;
   private cursorRow: Float32Array;
 
   // Reusable per-tick lookup maps (avoid allocation + GC)
@@ -163,9 +163,9 @@ export class NamePass {
     // CPU-side texture mirrors + reusable layout buffers
     const textRows = this.maxPlayers * LINES_PER_PLAYER;
     this.cpuPlayerData = new Float32Array(8 * this.maxPlayers * 4);
-    this.cpuStringData = new Uint8Array(MAX_CHARS * textRows);
+    this.cpuStringData = new Uint16Array(MAX_CHARS * textRows);
     this.cpuCursorData = new Float32Array(MAX_CHARS * textRows);
-    this.stringRow = new Uint8Array(MAX_CHARS);
+    this.stringRow = new Uint16Array(MAX_CHARS);
     this.cursorRow = new Float32Array(MAX_CHARS);
 
     // Shared VAO (unit [0,1]² quad)
@@ -658,7 +658,7 @@ export class NamePass {
         MAX_CHARS,
         this.maxPlayers * LINES_PER_PLAYER,
         gl.RED_INTEGER,
-        gl.UNSIGNED_BYTE,
+        gl.UNSIGNED_SHORT,
         this.cpuStringData,
       );
       this.stringDataDirty = false;

@@ -379,20 +379,23 @@ export class TransformHandler {
     this.changed = true;
   }
 
-  centerAll(fit: number = 1) {
-    //position entire map centered on the screen
+  centerAll(fit: number = 1, topPaddingPx: number = 0) {
+    // Position the entire map centered on the screen. With topPaddingPx the
+    // map is fitted and centered within the band below that padding, so the
+    // top HUD row does not cover it (embedded Hexah battles).
 
     const vpWidth = this.boundingRect().width;
     const vpHeight = this.boundingRect().height;
+    const fitHeight = Math.max(1, vpHeight - topPaddingPx);
     const mapWidth = this.game.width();
     const mapHeight = this.game.height();
 
     const scHor = (vpWidth / mapWidth) * fit;
-    const scVer = (vpHeight / mapHeight) * fit;
+    const scVer = (fitHeight / mapHeight) * fit;
     const tScale = Math.min(scHor, scVer);
 
     const oHor = (mapWidth - vpWidth) / 2 / tScale;
-    const oVer = (mapHeight - vpHeight) / 2 / tScale;
+    const oVer = (mapHeight - vpHeight - topPaddingPx) / 2 / tScale;
 
     this.override(oHor, oVer, tScale);
   }

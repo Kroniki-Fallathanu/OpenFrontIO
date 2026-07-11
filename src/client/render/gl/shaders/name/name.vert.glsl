@@ -9,7 +9,7 @@ layout(location = 0) in vec2 aPos;
 // Data textures
 uniform sampler2D  uGlyphMetrics;  // CHAR_RANGE × 2, RGBA32F
 uniform sampler2D  uCursorX;       // MAX_CHARS × (MAX_PLAYERS*2), R32F — pre-computed centered cursor X
-uniform usampler2D uStrings;       // MAX_CHARS × (MAX_PLAYERS*2), R8UI
+uniform usampler2D uStrings;       // MAX_CHARS × (MAX_PLAYERS*2), R16UI
 uniform sampler2D  uPlayerData;    // 4 × MAX_PLAYERS, RGBA32F
 
 // Uniforms
