@@ -340,6 +340,10 @@ export function createRenderer(
   );
 }
 
+// Embedded Hexah battles: initial camera keeps the whole map below the top
+// HUD row (leaderboard header / game controls) instead of underneath it.
+const EMBED_TOP_PADDING_PX = 96;
+
 export class GameRenderer {
   private layerTickState = new Map<Controller, { lastTickAtMs: number }>();
 
@@ -362,7 +366,9 @@ export class GameRenderer {
     );
 
     //show whole map on startup
-    this.transformHandler.centerAll(0.9);
+    const embedded =
+      document.documentElement.classList.contains("hexah-embedded");
+    this.transformHandler.centerAll(0.9, embedded ? EMBED_TOP_PADDING_PX : 0);
   }
 
   tick() {

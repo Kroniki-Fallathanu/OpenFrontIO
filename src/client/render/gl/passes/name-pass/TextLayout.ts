@@ -7,10 +7,15 @@ import type { GlyphTables } from "./AtlasData";
 import { CHAR_RANGE, MAX_CHARS } from "./Types";
 
 export interface LayoutResult {
-  charCodes: Uint8Array; // char code per slot (MAX_CHARS, zero-padded)
+  charCodes: Uint16Array; // char code per slot (MAX_CHARS, zero-padded)
   cursors: Float32Array; // centered cursor X per slot (MAX_CHARS)
   halfWidth: number; // visual half-width in font units
 }
+
+// Codepoints outside the glyph tables (>= CHAR_RANGE) render as "?" instead of
+// silently aliasing onto an unrelated glyph (a Uint8 store used to fold
+// U+0142 "ł" onto 66 "B").
+const FALLBACK_CHAR_CODE = "?".charCodeAt(0);
 
 /**
  * Lay out a string: encode char codes, compute advance-based cursor X
@@ -22,7 +27,7 @@ export function layoutString(
   text: string,
   glyph: GlyphTables,
   kernTable: Int8Array,
-  charCodes: Uint8Array,
+  charCodes: Uint16Array,
   cursors: Float32Array,
 ): number {
   charCodes.fill(0);
@@ -30,7 +35,8 @@ export function layoutString(
   const len = Math.min(text.length, MAX_CHARS);
 
   for (let i = 0; i < len; i++) {
-    charCodes[i] = text.charCodeAt(i);
+    const code = text.charCodeAt(i);
+    charCodes[i] = code < CHAR_RANGE ? code : FALLBACK_CHAR_CODE;
   }
 
   // Advance-based cursor positions

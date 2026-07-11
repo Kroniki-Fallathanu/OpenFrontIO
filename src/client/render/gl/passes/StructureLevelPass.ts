@@ -85,7 +85,7 @@ export class StructureLevelPass {
   private mapW: number;
 
   // Reusable buffers for layoutString
-  private charCodes = new Uint8Array(MAX_CHARS);
+  private charCodes = new Uint16Array(MAX_CHARS);
   private cursors = new Float32Array(MAX_CHARS);
 
   private distanceRange: number;

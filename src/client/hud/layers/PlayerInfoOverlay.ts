@@ -27,6 +27,7 @@ import {
   translateText,
 } from "../../Utils";
 import { GameView, PlayerView, UnitView } from "../../view";
+import { structureHudIcon } from "../FantasyStructureIcons";
 import {
   EMOJI_ICON_KIND,
   getFirstPlacePlayer,
@@ -216,7 +217,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
           translate="no"
         >
           <img
-            src=${icon}
+            src=${structureHudIcon(type, icon)}
             class="w-3 h-3 lg:w-4 lg:h-4 object-contain shrink-0"
           />
           <span>${player.totalUnitLevels(type)}</span>
