@@ -2,70 +2,70 @@
   "categories": ["other"],
   "id": "DolinaBrodu",
   "map": {
+    "height": 704,
+    "num_land_tiles": 729104,
+    "width": 1120
+  },
+  "map16x": {
+    "height": 176,
+    "num_land_tiles": 45127,
+    "width": 280
+  },
+  "map4x": {
     "height": 352,
     "num_land_tiles": 182276,
     "width": 560
-  },
-  "map16x": {
-    "height": 88,
-    "num_land_tiles": 11071,
-    "width": 140
-  },
-  "map4x": {
-    "height": 176,
-    "num_land_tiles": 45126,
-    "width": 280
   },
   "multiplayer_frequency": 0,
   "name": "Dolina Brodu",
   "nations": [
     {
-      "coordinates": [25, 173],
+      "coordinates": [50, 346],
       "flag": "",
       "name": "Osada Brzozowa"
     },
     {
-      "coordinates": [534, 333],
+      "coordinates": [1068, 666],
       "flag": "",
       "name": "Gród Cierni"
     },
     {
-      "coordinates": [360, 18],
+      "coordinates": [720, 36],
       "flag": "",
       "name": "Warownia Cisowa"
     },
     {
-      "coordinates": [264, 268],
+      "coordinates": [528, 536],
       "flag": "",
       "name": "Osada Mgielna"
     },
     {
-      "coordinates": [540, 85],
+      "coordinates": [1080, 170],
       "flag": "",
       "name": "Stanica Kruków"
     },
     {
-      "coordinates": [114, 17],
+      "coordinates": [228, 34],
       "flag": "",
       "name": "Obóz Wilczy"
     },
     {
-      "coordinates": [418, 193],
+      "coordinates": [836, 386],
       "flag": "",
       "name": "Gród Turów"
     },
     {
-      "coordinates": [92, 335],
+      "coordinates": [184, 670],
       "flag": "",
       "name": "Osada Wrzosowa"
     },
     {
-      "coordinates": [219, 113],
+      "coordinates": [438, 226],
       "flag": "",
       "name": "Warownia Skalna"
     },
     {
-      "coordinates": [365, 334],
+      "coordinates": [730, 668],
       "flag": "",
       "name": "Osada Bobrów"
     }

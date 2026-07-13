@@ -2,70 +2,70 @@
   "categories": ["other"],
   "id": "WyspaWygnancow",
   "map": {
-    "height": 416,
-    "num_land_tiles": 175563,
-    "width": 512
+    "height": 832,
+    "num_land_tiles": 702252,
+    "width": 1024
   },
   "map16x": {
-    "height": 104,
-    "num_land_tiles": 10622,
-    "width": 128
-  },
-  "map4x": {
     "height": 208,
     "num_land_tiles": 43422,
     "width": 256
+  },
+  "map4x": {
+    "height": 416,
+    "num_land_tiles": 175563,
+    "width": 512
   },
   "multiplayer_frequency": 0,
   "name": "Wyspa Wygnańców",
   "nations": [
     {
-      "coordinates": [114, 358],
+      "coordinates": [228, 716],
       "flag": "",
       "name": "Osada Brzozowa"
     },
     {
-      "coordinates": [445, 36],
+      "coordinates": [890, 72],
       "flag": "",
       "name": "Gród Cierni"
     },
     {
-      "coordinates": [21, 17],
+      "coordinates": [42, 34],
       "flag": "",
       "name": "Warownia Cisowa"
     },
     {
-      "coordinates": [473, 377],
+      "coordinates": [946, 754],
       "flag": "",
       "name": "Osada Mgielna"
     },
     {
-      "coordinates": [228, 145],
+      "coordinates": [456, 290],
       "flag": "",
       "name": "Stanica Kruków"
     },
     {
-      "coordinates": [379, 232],
+      "coordinates": [758, 464],
       "flag": "",
       "name": "Obóz Wilczy"
     },
     {
-      "coordinates": [283, 392],
+      "coordinates": [566, 784],
       "flag": "",
       "name": "Gród Turów"
     },
     {
-      "coordinates": [59, 168],
+      "coordinates": [118, 336],
       "flag": "",
       "name": "Osada Wrzosowa"
     },
     {
-      "coordinates": [492, 166],
+      "coordinates": [984, 332],
       "flag": "",
       "name": "Warownia Skalna"
     },
     {
-      "coordinates": [189, 16],
+      "coordinates": [378, 32],
       "flag": "",
       "name": "Osada Bobrów"
     }
