@@ -3,17 +3,17 @@
   "id": "WyspaWygnancow",
   "map": {
     "height": 416,
-    "num_land_tiles": 179030,
+    "num_land_tiles": 175563,
     "width": 512
   },
   "map16x": {
     "height": 104,
-    "num_land_tiles": 10976,
+    "num_land_tiles": 10622,
     "width": 128
   },
   "map4x": {
     "height": 208,
-    "num_land_tiles": 44472,
+    "num_land_tiles": 43422,
     "width": 256
   },
   "multiplayer_frequency": 0,

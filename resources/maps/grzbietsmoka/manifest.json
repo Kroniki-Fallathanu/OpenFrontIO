@@ -3,17 +3,17 @@
   "id": "GrzbietSmoka",
   "map": {
     "height": 384,
-    "num_land_tiles": 191366,
+    "num_land_tiles": 187893,
     "width": 512
   },
   "map16x": {
     "height": 96,
-    "num_land_tiles": 11887,
+    "num_land_tiles": 11482,
     "width": 128
   },
   "map4x": {
     "height": 192,
-    "num_land_tiles": 47748,
+    "num_land_tiles": 46635,
     "width": 256
   },
   "multiplayer_frequency": 0,

@@ -3,17 +3,17 @@
   "id": "Wrzosowiska",
   "map": {
     "height": 384,
-    "num_land_tiles": 186813,
+    "num_land_tiles": 182632,
     "width": 512
   },
   "map16x": {
     "height": 96,
-    "num_land_tiles": 11557,
+    "num_land_tiles": 11117,
     "width": 128
   },
   "map4x": {
     "height": 192,
-    "num_land_tiles": 46545,
+    "num_land_tiles": 45265,
     "width": 256
   },
   "multiplayer_frequency": 0,
@@ -60,7 +60,7 @@
       "name": "Osada Wrzosowa"
     },
     {
-      "coordinates": [86, 148],
+      "coordinates": [84, 150],
       "flag": "",
       "name": "Warownia Skalna"
     },

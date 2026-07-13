@@ -3,6 +3,7 @@ import { customElement, state } from "lit/decorators.js";
 import { assetUrl } from "../../../core/AssetUrls";
 import { EventBus } from "../../../core/EventBus";
 import { GameType } from "../../../core/game/Game";
+import { isHexahEmbedded } from "../../Auth";
 import { Controller } from "../../Controller";
 import { crazyGamesSDK } from "../../CrazyGamesSDK";
 import { TogglePauseIntentEvent } from "../../InputHandler";
@@ -258,10 +259,11 @@ export class GameRightSidebar extends LitElement implements Controller {
               />
             </div>`
           : ""}
-
-        <div class="cursor-pointer" @click=${this.onExitButtonClick}>
-          <img src=${exitIcon} alt="exit" width="20" height="20" />
-        </div>
+        ${isHexahEmbedded()
+          ? ""
+          : html`<div class="cursor-pointer" @click=${this.onExitButtonClick}>
+              <img src=${exitIcon} alt="exit" width="20" height="20" />
+            </div>`}
       </aside>
     `;
   }

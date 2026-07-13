@@ -3,17 +3,17 @@
   "id": "DwaJeziora",
   "map": {
     "height": 384,
-    "num_land_tiles": 176937,
+    "num_land_tiles": 172954,
     "width": 512
   },
   "map16x": {
     "height": 96,
-    "num_land_tiles": 10951,
+    "num_land_tiles": 10547,
     "width": 128
   },
   "map4x": {
     "height": 192,
-    "num_land_tiles": 44088,
+    "num_land_tiles": 42883,
     "width": 256
   },
   "multiplayer_frequency": 0,
@@ -55,7 +55,7 @@
       "name": "Gród Turów"
     },
     {
-      "coordinates": [359, 138],
+      "coordinates": [359, 137],
       "flag": "",
       "name": "Osada Wrzosowa"
     },
@@ -65,7 +65,7 @@
       "name": "Warownia Skalna"
     },
     {
-      "coordinates": [453, 216],
+      "coordinates": [451, 217],
       "flag": "",
       "name": "Osada Bobrów"
     }
