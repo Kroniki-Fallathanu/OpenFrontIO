@@ -3,17 +3,17 @@
   "id": "KotlinaTraw",
   "map": {
     "height": 384,
-    "num_land_tiles": 196608,
+    "num_land_tiles": 191964,
     "width": 512
   },
   "map16x": {
     "height": 96,
-    "num_land_tiles": 12288,
+    "num_land_tiles": 11778,
     "width": 128
   },
   "map4x": {
     "height": 192,
-    "num_land_tiles": 49152,
+    "num_land_tiles": 47705,
     "width": 256
   },
   "multiplayer_frequency": 0,
