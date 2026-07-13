@@ -4,6 +4,7 @@ import {
   Execution,
   Game,
   GameMode,
+  GameType,
   Player,
   PlayerType,
   RankedType,
@@ -51,6 +52,22 @@ export class WinCheckExecution implements Execution {
       return;
     }
 
+    // Embedded Hexah battles (Singleplayer/Private): once every human is
+    // eliminated only bots remain, and without this the game would grind on
+    // until the timer. End it immediately with the current leader so the host
+    // RPG can resolve the battle (a bot winner counts as the players' loss).
+    if (
+      this.mg.config().gameConfig().gameType !== GameType.Public &&
+      this.allHumansEliminated()
+    ) {
+      this.mg.setWinner(sorted[0], this.mg.stats().stats());
+      console.log(
+        `all human players eliminated, ${sorted[0].name()} has won the game`,
+      );
+      this.active = false;
+      return;
+    }
+
     if (this.mg.config().gameConfig().rankedType === RankedType.OneVOne) {
       const humans = sorted.filter(
         (p) => p.type() === PlayerType.Human && !p.isDisconnected(),
@@ -78,6 +95,16 @@ export class WinCheckExecution implements Execution {
       console.log(`${max.name()} has won the game`);
       this.active = false;
     }
+  }
+
+  private allHumansEliminated(): boolean {
+    if (this.mg === null) throw new Error("Not initialized");
+    // allPlayers() — players() hides dead players, which would make a lobby
+    // with every human dead look like a lobby that never had humans at all.
+    const humans = this.mg
+      .allPlayers()
+      .filter((p) => p.type() === PlayerType.Human);
+    return humans.length > 0 && humans.every((p) => !p.isAlive());
   }
 
   checkWinnerTeam(): void {
