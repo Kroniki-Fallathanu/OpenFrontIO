@@ -23,6 +23,15 @@ const BATTLE_PID_HASH_PARAM = "hexPid";
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// True inside an embedded Hexah battle (html.hexah-embedded is stamped by
+// index.html before first paint whenever #hexPid is present). The host RPG
+// owns the battle lifecycle there — leaving mid-game goes through its own
+// surrender flow, so the fork's exit-to-lobby buttons must not render.
+export function isHexahEmbedded(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.documentElement.classList.contains("hexah-embedded");
+}
+
 export function battlePersistentIdOverride(): string | null {
   if (typeof window === "undefined") return null;
   try {

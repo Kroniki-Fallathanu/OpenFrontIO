@@ -5,6 +5,7 @@ import { PauseGameIntentEvent } from "src/client/Transport";
 import { assetUrl } from "../../../core/AssetUrls";
 import { EventBus } from "../../../core/EventBus";
 import { UserSettings } from "../../../core/game/UserSettings";
+import { isHexahEmbedded } from "../../Auth";
 import { Controller } from "../../Controller";
 import {
   AlternateViewEvent,
@@ -579,22 +580,29 @@ export class SettingsModal extends LitElement implements Controller {
               </button>
             </div>
 
-            <div class="border-t border-slate-600 pt-3 mt-4">
-              <button
-                class="flex gap-3 items-center w-full text-left p-3 hover:bg-red-600/20 rounded-sm text-red-400 transition-colors"
-                @click="${this.onExitButtonClick}"
-              >
-                <img src=${exitIcon} alt="exitIcon" width="20" height="20" />
-                <div class="flex-1">
-                  <div class="font-medium">
-                    ${translateText("user_setting.exit_game_label")}
-                  </div>
-                  <div class="text-sm text-slate-400">
-                    ${translateText("user_setting.exit_game_info")}
-                  </div>
-                </div>
-              </button>
-            </div>
+            ${isHexahEmbedded()
+              ? ""
+              : html`<div class="border-t border-slate-600 pt-3 mt-4">
+                  <button
+                    class="flex gap-3 items-center w-full text-left p-3 hover:bg-red-600/20 rounded-sm text-red-400 transition-colors"
+                    @click="${this.onExitButtonClick}"
+                  >
+                    <img
+                      src=${exitIcon}
+                      alt="exitIcon"
+                      width="20"
+                      height="20"
+                    />
+                    <div class="flex-1">
+                      <div class="font-medium">
+                        ${translateText("user_setting.exit_game_label")}
+                      </div>
+                      <div class="text-sm text-slate-400">
+                        ${translateText("user_setting.exit_game_info")}
+                      </div>
+                    </div>
+                  </button>
+                </div>`}
           </div>
         </div>
       </div>
