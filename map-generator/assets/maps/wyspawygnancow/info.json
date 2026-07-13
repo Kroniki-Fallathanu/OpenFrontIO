@@ -6,52 +6,52 @@
   "multiplayer_frequency": 0,
   "nations": [
     {
-      "coordinates": [114, 358],
+      "coordinates": [228, 716],
       "name": "Osada Brzozowa",
       "flag": ""
     },
     {
-      "coordinates": [445, 36],
+      "coordinates": [890, 72],
       "name": "Gród Cierni",
       "flag": ""
     },
     {
-      "coordinates": [21, 17],
+      "coordinates": [42, 34],
       "name": "Warownia Cisowa",
       "flag": ""
     },
     {
-      "coordinates": [473, 377],
+      "coordinates": [946, 754],
       "name": "Osada Mgielna",
       "flag": ""
     },
     {
-      "coordinates": [228, 145],
+      "coordinates": [456, 290],
       "name": "Stanica Kruków",
       "flag": ""
     },
     {
-      "coordinates": [379, 232],
+      "coordinates": [758, 464],
       "name": "Obóz Wilczy",
       "flag": ""
     },
     {
-      "coordinates": [283, 392],
+      "coordinates": [566, 784],
       "name": "Gród Turów",
       "flag": ""
     },
     {
-      "coordinates": [59, 168],
+      "coordinates": [118, 336],
       "name": "Osada Wrzosowa",
       "flag": ""
     },
     {
-      "coordinates": [492, 166],
+      "coordinates": [984, 332],
       "name": "Warownia Skalna",
       "flag": ""
     },
     {
-      "coordinates": [189, 16],
+      "coordinates": [378, 32],
       "name": "Osada Bobrów",
       "flag": ""
     }

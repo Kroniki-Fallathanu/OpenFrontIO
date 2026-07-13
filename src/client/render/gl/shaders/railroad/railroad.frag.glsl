@@ -57,31 +57,6 @@ bool isBridgePixel(uint rt, ivec2 lp) {
   return false;
 }
 
-// Detailed-mode coverage: 3x3 sub-grid with cross-ties, rail band width
-// scaled by uRailThickness (clamped so the two bands never overlap fully).
-float railDetailCoverage(uint rt, vec2 f) {
-  if (rt == 0u) return 0.0;
-  float T = 1.0 / 3.0;
-  float T2 = 2.0 / 3.0;
-  float w = min(T * uRailThickness, 0.5);
-  bool center = (f.x >= T && f.x < T2 && f.y >= T && f.y < T2);
-  bool hit = false;
-  if (rt == 1u) {
-    hit = (f.x < w) || (f.x >= 1.0 - w) || center;
-  } else if (rt == 2u) {
-    hit = (f.y < w) || (f.y >= 1.0 - w) || center;
-  } else if (rt == 3u) {
-    hit = (f.y < w) || (f.x < w) || center;
-  } else if (rt == 4u) {
-    hit = (f.y < w) || (f.x >= 1.0 - w) || center;
-  } else if (rt == 5u) {
-    hit = (f.y >= 1.0 - w) || (f.x < w) || center;
-  } else if (rt == 6u) {
-    hit = (f.y >= 1.0 - w) || (f.x >= 1.0 - w) || center;
-  }
-  return hit ? 1.0 : 0.0;
-}
-
 float segDist(vec2 p, vec2 a, vec2 b) {
   vec2 ab = b - a;
   float t = clamp(dot(p - a, ab) / dot(ab, ab), 0.0, 1.0);
@@ -106,6 +81,17 @@ float railLineCoverage(uint rt, vec2 p) {
   float halfW = 0.5 * uRailThickness;
   float aa = 0.5 / uZoom; // ~1 screen pixel in tile units
   return 1.0 - smoothstep(halfW - aa, halfW + aa, railLineDist(rt, p));
+}
+
+// Detailed-mode coverage: solid road band around the route centerline —
+// the fantasy reskin draws caravan roads instead of twin rails with
+// cross-ties. Width follows uRailThickness, clamped inside the tile so
+// coverage never needs neighbor spill in detail mode.
+float railDetailCoverage(uint rt, vec2 f) {
+  if (rt == 0u || rt > 6u) return 0.0;
+  float halfW = min(uRailThickness / 3.0, 0.5);
+  float aa = 0.08;
+  return 1.0 - smoothstep(halfW - aa, halfW + aa, railLineDist(rt, f));
 }
 
 void main() {

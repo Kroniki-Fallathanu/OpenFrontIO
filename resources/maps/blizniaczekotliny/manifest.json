@@ -2,70 +2,70 @@
   "categories": ["other"],
   "id": "BlizniaczeKotliny",
   "map": {
-    "height": 384,
-    "num_land_tiles": 185497,
-    "width": 512
+    "height": 768,
+    "num_land_tiles": 741988,
+    "width": 1024
   },
   "map16x": {
-    "height": 96,
-    "num_land_tiles": 11354,
-    "width": 128
-  },
-  "map4x": {
     "height": 192,
     "num_land_tiles": 46047,
     "width": 256
+  },
+  "map4x": {
+    "height": 384,
+    "num_land_tiles": 185497,
+    "width": 512
   },
   "multiplayer_frequency": 0,
   "name": "Bliźniacze Kotliny",
   "nations": [
     {
-      "coordinates": [352, 141],
+      "coordinates": [704, 282],
       "flag": "",
       "name": "Osada Brzozowa"
     },
     {
-      "coordinates": [17, 364],
+      "coordinates": [34, 728],
       "flag": "",
       "name": "Gród Cierni"
     },
     {
-      "coordinates": [71, 18],
+      "coordinates": [142, 36],
       "flag": "",
       "name": "Warownia Cisowa"
     },
     {
-      "coordinates": [494, 367],
+      "coordinates": [988, 734],
       "flag": "",
       "name": "Osada Mgielna"
     },
     {
-      "coordinates": [160, 228],
+      "coordinates": [320, 456],
       "flag": "",
       "name": "Stanica Kruków"
     },
     {
-      "coordinates": [492, 23],
+      "coordinates": [984, 46],
       "flag": "",
       "name": "Obóz Wilczy"
     },
     {
-      "coordinates": [283, 341],
+      "coordinates": [566, 682],
       "flag": "",
       "name": "Gród Turów"
     },
     {
-      "coordinates": [231, 50],
+      "coordinates": [462, 100],
       "flag": "",
       "name": "Osada Wrzosowa"
     },
     {
-      "coordinates": [405, 271],
+      "coordinates": [810, 542],
       "flag": "",
       "name": "Warownia Skalna"
     },
     {
-      "coordinates": [18, 143],
+      "coordinates": [36, 286],
       "flag": "",
       "name": "Osada Bobrów"
     }
