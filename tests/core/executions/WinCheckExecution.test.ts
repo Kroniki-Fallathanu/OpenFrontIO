@@ -617,7 +617,7 @@ describe("WinCheckExecution - all humans eliminated (embedded battles)", () => {
     expect(winCheck.isActive()).toBe(false);
   });
 
-  test("private game: ends only after the last human dies", async () => {
+  test("private game: one human dying does not end it while others still fight", async () => {
     const game = await setup(
       "big_plains",
       {
@@ -633,8 +633,14 @@ describe("WinCheckExecution - all humans eliminated (embedded battles)", () => {
     );
     const human1 = game.player("Human1");
     const human2 = game.player("Human2");
+    // A bot also holds land — so after one human dies there are still two
+    // players alive and the battle continues (not a sole-survivor win).
+    const botInfo = new PlayerInfo("TestBot", PlayerType.Bot, null, "bot_id");
+    game.addPlayer(botInfo);
+    const bot = game.player("bot_id");
     let h1 = 0;
     let h2 = 0;
+    let b = 0;
     game.map().forEachTile((tile) => {
       if (!game.map().isLand(tile)) return;
       if (h1 < 1) {
@@ -643,6 +649,9 @@ describe("WinCheckExecution - all humans eliminated (embedded battles)", () => {
       } else if (h2 < 10) {
         human2.conquer(tile);
         h2++;
+      } else if (b < 10) {
+        bot.conquer(tile);
+        b++;
       }
     });
     const setWinnerSpy = vi.fn();
@@ -652,7 +661,7 @@ describe("WinCheckExecution - all humans eliminated (embedded battles)", () => {
 
     eliminate(game, human1, human2);
     winCheck.checkWinnerFFA();
-    // One human is still alive — the game goes on.
+    // Human2 and the bot are still alive — the game goes on.
     expect(setWinnerSpy).not.toHaveBeenCalled();
     expect(winCheck.isActive()).toBe(true);
   });
@@ -663,6 +672,101 @@ describe("WinCheckExecution - all humans eliminated (embedded battles)", () => {
     );
     eliminate(game, human, bot);
     winCheck.checkWinnerFFA();
+    expect(setWinnerSpy).not.toHaveBeenCalled();
+    expect(winCheck.isActive()).toBe(true);
+  });
+});
+
+describe("WinCheckExecution - sole survivor wins (embedded battles)", () => {
+  test("singleplayer: human wins the moment it is the last player alive, even below the territory threshold", async () => {
+    const game = await setup(
+      "big_plains",
+      {
+        infiniteGold: true,
+        gameMode: GameMode.FFA,
+        instantBuild: true,
+        gameType: GameType.Singleplayer,
+      },
+      [playerInfo("Human1", PlayerType.Human)],
+    );
+    const human = game.player("Human1");
+    const botInfo = new PlayerInfo("TestBot", PlayerType.Bot, null, "bot_id");
+    game.addPlayer(botInfo);
+    const bot = game.player("bot_id");
+
+    // Human holds a sliver of land — well under percentageTilesOwnedToWin.
+    let humanCount = 0;
+    let botCount = 0;
+    game.map().forEachTile((tile) => {
+      if (!game.map().isLand(tile)) return;
+      if (humanCount < 5) {
+        human.conquer(tile);
+        humanCount++;
+      } else if (botCount < 5) {
+        bot.conquer(tile);
+        botCount++;
+      }
+    });
+    const totalLand = game.numLandTiles();
+    expect((human.numTilesOwned() / totalLand) * 100).toBeLessThan(
+      game.config().percentageTilesOwnedToWin(),
+    );
+
+    const setWinnerSpy = vi.fn();
+    game.setWinner = setWinnerSpy;
+    const winCheck = new WinCheckExecution();
+    winCheck.init(game, 0);
+
+    // Bot still alive — no winner yet.
+    winCheck.checkWinnerFFA();
+    expect(setWinnerSpy).not.toHaveBeenCalled();
+
+    // Bot eliminated → human is the sole survivor → wins immediately.
+    game.map().forEachTile((tile) => {
+      if (game.owner(tile) === bot) human.conquer(tile);
+    });
+    expect(bot.isAlive()).toBe(false);
+    winCheck.checkWinnerFFA();
+    expect(setWinnerSpy).toHaveBeenCalledWith(human, expect.anything());
+    expect(winCheck.isActive()).toBe(false);
+  });
+
+  test("public game: sole survivor still must reach the territory threshold", async () => {
+    const game = await setup(
+      "big_plains",
+      {
+        infiniteGold: true,
+        gameMode: GameMode.FFA,
+        instantBuild: true,
+        gameType: GameType.Public,
+      },
+      [playerInfo("Human1", PlayerType.Human)],
+    );
+    const human = game.player("Human1");
+    const botInfo = new PlayerInfo("TestBot", PlayerType.Bot, null, "bot_id");
+    game.addPlayer(botInfo);
+    const bot = game.player("bot_id");
+    let humanCount = 0;
+    let botCount = 0;
+    game.map().forEachTile((tile) => {
+      if (!game.map().isLand(tile)) return;
+      if (humanCount < 5) {
+        human.conquer(tile);
+        humanCount++;
+      } else if (botCount < 5) {
+        bot.conquer(tile);
+        botCount++;
+      }
+    });
+    const setWinnerSpy = vi.fn();
+    game.setWinner = setWinnerSpy;
+    const winCheck = new WinCheckExecution();
+    winCheck.init(game, 0);
+    game.map().forEachTile((tile) => {
+      if (game.owner(tile) === bot) human.conquer(tile);
+    });
+    winCheck.checkWinnerFFA();
+    // Public game: last-alive is not a win condition, only territory %.
     expect(setWinnerSpy).not.toHaveBeenCalled();
     expect(winCheck.isActive()).toBe(true);
   });
