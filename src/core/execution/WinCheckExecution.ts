@@ -52,20 +52,29 @@ export class WinCheckExecution implements Execution {
       return;
     }
 
-    // Embedded Hexah battles (Singleplayer/Private): once every human is
-    // eliminated only bots remain, and without this the game would grind on
-    // until the timer. End it immediately with the current leader so the host
-    // RPG can resolve the battle (a bot winner counts as the players' loss).
-    if (
-      this.mg.config().gameConfig().gameType !== GameType.Public &&
-      this.allHumansEliminated()
-    ) {
-      this.mg.setWinner(sorted[0], this.mg.stats().stats());
-      console.log(
-        `all human players eliminated, ${sorted[0].name()} has won the game`,
-      );
-      this.active = false;
-      return;
+    // Embedded Hexah battles (Singleplayer/Private) end on "last player
+    // standing", not only on the territory threshold. In a solo battle the
+    // player can wipe out every tribe/bot yet hold well under
+    // percentageTilesOwnedToWin of the raw land — without this the game runs
+    // to the timer and the win never registers. Symmetric with the loss case:
+    //  - sole survivor  → that player wins (human clears the map → victory),
+    //  - all humans dead → current leader (a bot) wins → players' loss.
+    // Public games keep the upstream territory/timer conditions only.
+    if (this.mg.config().gameConfig().gameType !== GameType.Public) {
+      if (this.allHumansEliminated()) {
+        this.mg.setWinner(sorted[0], this.mg.stats().stats());
+        console.log(
+          `all human players eliminated, ${sorted[0].name()} has won the game`,
+        );
+        this.active = false;
+        return;
+      }
+      if (sorted.length === 1 && this.mg.allPlayers().length > 1) {
+        this.mg.setWinner(sorted[0], this.mg.stats().stats());
+        console.log(`${sorted[0].name()} is the last player standing and won`);
+        this.active = false;
+        return;
+      }
     }
 
     if (this.mg.config().gameConfig().rankedType === RankedType.OneVOne) {
