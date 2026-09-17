@@ -69,6 +69,22 @@ export class ServerEnv {
   static resultWebhookSecret(): string {
     return process.env.RESULT_WEBHOOK_SECRET ?? "";
   }
+  /*
+   * How long a game with nobody connected stays alive before it is finished and
+   * pruned, measured from the last ping of any client. A public lobby nobody
+   * joined can go quickly, so the default keeps the historical 20 seconds. A
+   * Hexah wild battle has exactly ONE human, so that window turned a brief
+   * connection loss into a lost battle: the browser reconnected and the worker
+   * answered "Game not found" (close 1002) because the game was already gone.
+   * Deployments that host such battles raise this to give the player time to
+   * come back. Anything unset, unparsable or non-positive falls back to the
+   * default rather than disabling the sweep — a game nobody can ever rejoin
+   * must not live forever.
+   */
+  static abandonedGameGraceMs(): number {
+    const parsed = parseInt(process.env.ABANDONED_GAME_GRACE_MS ?? "", 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 20_000;
+  }
   // Shared secret authorizing trusted server→server calls (e.g. Hexah Strapi
   // creating a wild battle via /api/create_game) without a player JWT. Empty =
   // disabled, so vanilla deployments keep the normal Bearer/admin-token auth.
