@@ -958,7 +958,10 @@ export class GameServer {
       return GamePhase.Finished;
     }
 
-    const noRecentPings = now > this.lastPingUpdate + 20 * 1000;
+    // Configurable: a single-player wild battle used to die on a brief
+    // connection loss with this window hard-coded to 20s (see ServerEnv).
+    const noRecentPings =
+      now > this.lastPingUpdate + ServerEnv.abandonedGameGraceMs();
     const noActive = this.activeClients.length === 0;
 
     const lessThanLifetime = this.startsAt ? Date.now() < this.startsAt : true;
