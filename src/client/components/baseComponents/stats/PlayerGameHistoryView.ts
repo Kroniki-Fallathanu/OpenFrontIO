@@ -1,15 +1,27 @@
-import { html, LitElement, type TemplateResult } from "lit";
+import {
+  html,
+  LitElement,
+  type PropertyValues,
+  type TemplateResult,
+} from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import {
   type PlayerGameModeFilter,
   type PlayerGameTypeFilter,
   type PublicPlayerGame,
 } from "../../../../core/ApiSchemas";
+import { assetUrl } from "../../../../core/AssetUrls";
 import { GameMapType } from "../../../../core/game/Game";
 import { fetchPublicPlayerGames } from "../../../Api";
-import { GameInfoModal } from "../../../GameInfoModal";
+import { ClientEnv } from "../../../ClientEnv";
 import { terrainMapFileLoader } from "../../../TerrainMapFileLoader";
-import { getMapName, renderDuration, translateText } from "../../../Utils";
+import {
+  copyToClipboard,
+  getMapName,
+  renderDuration,
+  showToast,
+  translateText,
+} from "../../../Utils";
 import { renderLoadingSpinner } from "../../BaseModal";
 import "../../CopyButton";
 import {
@@ -18,6 +30,10 @@ import {
   groupByDay,
 } from "./GameHistoryDates";
 import { formatGameType } from "./GameTypeLabels";
+
+const statsIcon = assetUrl("images/LeaderboardIconRegularWhite.svg");
+const replayIcon = assetUrl("images/ReplayRegularIconWhite.svg");
+const linkIcon = assetUrl("images/LinkIconWhite.svg");
 
 type TypeKey = PlayerGameTypeFilter | "all";
 type ModeKey = PlayerGameModeFilter | "all";
@@ -37,8 +53,8 @@ const MODE_TABS: { key: ModeKey; labelKey: string }[] = [
   { key: "all", labelKey: "clan_modal.history_filter_all" },
   { key: "ffa", labelKey: "clan_modal.history_type_ffa" },
   { key: "team", labelKey: "clan_modal.history_type_team" },
-  { key: "hvn", labelKey: "clan_modal.history_filter_hvn" },
-  { key: "ranked", labelKey: "clan_modal.history_filter_ranked" },
+  { key: "hvn", labelKey: "clan_modal.stats_hvn" },
+  { key: "ranked", labelKey: "clan_modal.stats_ranked" },
 ];
 
 // Cache survives a tab switch within the modal: keep the full accumulated list
@@ -82,19 +98,46 @@ export class PlayerGameHistoryView extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    this.syncToPublicId();
+  }
+
+  // Hydrate from the cache when it matches the current player, otherwise load
+  // that player's history fresh.
+  private syncToPublicId() {
     if (this.cachedState && this.cachedState.publicId === this.publicId) {
       this.games = this.cachedState.games;
       this.nextCursor = this.cachedState.nextCursor;
       this.typeFilter = this.cachedState.typeFilter;
       this.modeFilter = this.cachedState.modeFilter;
+      this.appendFailed = false;
+      this.loadState = "ok";
     } else if (this.publicId) {
-      this.reload();
+      // Fresh player → show the default (All) view rather than inheriting the
+      // previous player's filters. No-op on first mount (already defaults).
+      this.typeFilter = "all";
+      this.modeFilter = "all";
+      void this.reload();
     }
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this.teardownObserver();
+  }
+
+  willUpdate(changed: PropertyValues) {
+    // Reload when the host swaps in a different player after mount (e.g. a
+    // manual hash edit routes the profile modal to a new publicId). Lit reuses
+    // this element, so connectedCallback won't fire again. The undefined check
+    // skips the initial render, which connectedCallback already handled.
+    const previous = changed.get("publicId");
+    if (
+      changed.has("publicId") &&
+      previous !== undefined &&
+      previous !== this.publicId
+    ) {
+      this.syncToPublicId();
+    }
   }
 
   updated() {
@@ -212,19 +255,28 @@ export class PlayerGameHistoryView extends LitElement {
     );
   }
 
-  // Opens the game-info ranking overlay on top of the account modal. The modal
-  // is a global singleton in the document (queried the same way as Main.ts),
-  // so we don't close the account modal — the overlay layers above it.
-  private showRanking(gameId: string) {
-    const gameInfoModal = document.querySelector(
-      "game-info-modal",
-    ) as GameInfoModal | null;
-    if (!gameInfoModal) {
-      console.warn("Game info modal element not found");
-      return;
+  private showStats(gameId: string) {
+    this.dispatchEvent(
+      new CustomEvent<{ gameId: string }>("view-stats", {
+        detail: { gameId },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private async copyGameLink(gameId: string) {
+    // shareOrigin(), not window.location.origin: this is copied to be sent to
+    // someone else, and the desktop shell's own origin (`app://openfront`)
+    // resolves nowhere outside that Electron app. See deriveShareOrigin.
+    const url = `${ClientEnv.shareOrigin()}${ClientEnv.gamePath(gameId)}`;
+
+    try {
+      await void copyToClipboard(url);
+      showToast(translateText("common.copied"), "green");
+    } catch {
+      showToast(translateText("common.failed_copy"), "red");
     }
-    void gameInfoModal.loadGame(gameId);
-    gameInfoModal.open();
   }
 
   render() {
@@ -401,10 +453,12 @@ export class PlayerGameHistoryView extends LitElement {
     const mapDisplayName = game.map ? (getMapName(game.map) ?? game.map) : null;
 
     return html`
-      <div class="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+      <div
+        class="relative bg-white/5 border border-white/10 rounded-xl overflow-hidden"
+      >
         ${mapWebpPath
           ? html`<div
-              class="relative w-full aspect-[3/1] overflow-hidden bg-surface"
+              class="relative w-full aspect-[30/15] overflow-hidden bg-surface"
             >
               <img
                 src=${mapWebpPath}
@@ -424,7 +478,7 @@ export class PlayerGameHistoryView extends LitElement {
                     ${mapDisplayName}
                   </div>`
                 : ""}
-              <div class="absolute top-2 right-2">
+              <div class="absolute top-2 left-2">
                 ${this.renderResultBadge(game)}
               </div>
               <div
@@ -435,34 +489,62 @@ export class PlayerGameHistoryView extends LitElement {
             </div>`
           : ""}
         <div
-          class="flex items-center justify-between gap-3 px-4 py-3 border-b border-white/5"
+          class=${mapWebpPath
+            ? "absolute top-2 right-2 z-[1]"
+            : "flex items-center justify-end px-4 py-3 border-b border-white/5"}
         >
-          <div class="flex items-center gap-2 min-w-0">
-            <span
-              class="text-[10px] font-bold uppercase tracking-wider text-white/40"
-              >${translateText("clan_modal.history_game_id")}:</span
-            >
-            <copy-button
-              compact
-              .copyText=${game.gameId}
-              .displayText=${game.gameId}
-              .showVisibilityToggle=${false}
-            ></copy-button>
-          </div>
           <div class="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              @click=${() => this.showRanking(game.gameId)}
-              class="px-3 py-1.5 text-xs font-bold text-white/80 uppercase tracking-wider bg-white/10 hover:bg-white/20 border border-white/10 rounded-lg transition-colors"
+              title=${translateText("game_list.stats")}
+              aria-label=${translateText("game_list.stats")}
+              @click=${() => this.showStats(game.gameId)}
+              class="inline-flex w-8 h-8 items-center justify-center text-white bg-malibu-blue hover:bg-aquarius active:bg-malibu-blue/80 rounded-lg transition-all"
             >
-              ${translateText("game_list.stats")}
+              <img
+                src=${statsIcon}
+                alt=""
+                aria-hidden="true"
+                width="18"
+                height="18"
+              />
+              <span class="sr-only">${translateText("game_list.stats")}</span>
             </button>
             <button
               type="button"
-              @click=${() => this.watchReplay(game.gameId)}
-              class="px-3 py-1.5 text-xs font-bold text-white uppercase tracking-wider bg-malibu-blue hover:bg-aquarius active:bg-malibu-blue/80 rounded-lg transition-all"
+              title=${translateText("common.click_to_copy")}
+              aria-label=${translateText("common.click_to_copy")}
+              @click=${() => this.copyGameLink(game.gameId)}
+              class="inline-flex w-8 h-8 items-center justify-center text-white bg-malibu-blue hover:bg-aquarius active:bg-malibu-blue/80 rounded-lg transition-all"
             >
-              ${translateText("clan_modal.history_watch_replay")}
+              <img
+                src=${linkIcon}
+                alt=""
+                aria-hidden="true"
+                width="18"
+                height="18"
+              />
+              <span class="sr-only"
+                >${translateText("common.click_to_copy")}</span
+              >
+            </button>
+            <button
+              type="button"
+              title=${translateText("clan_modal.history_watch_replay")}
+              aria-label=${translateText("clan_modal.history_watch_replay")}
+              @click=${() => this.watchReplay(game.gameId)}
+              class="inline-flex w-8 h-8 items-center justify-center text-white bg-malibu-blue hover:bg-aquarius active:bg-malibu-blue/80 rounded-lg transition-all"
+            >
+              <img
+                src=${replayIcon}
+                alt=""
+                aria-hidden="true"
+                width="18"
+                height="18"
+              />
+              <span class="sr-only"
+                >${translateText("clan_modal.history_watch_replay")}</span
+              >
             </button>
           </div>
         </div>
@@ -474,7 +556,7 @@ export class PlayerGameHistoryView extends LitElement {
             game.clanTag ?? "—",
           )}
           ${this.renderField(
-            translateText("account_modal.games_username"),
+            translateText("account_modal.username_title"),
             game.username,
           )}
         </div>

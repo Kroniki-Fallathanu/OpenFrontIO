@@ -4,6 +4,7 @@ import { tempTokenLogin } from "./Auth";
 import { BaseModal } from "./components/BaseModal";
 import "./components/Difficulties";
 import { modalHeader } from "./components/ui/ModalHeader";
+import { showInGameAlert } from "./InGameModal";
 import { translateText } from "./Utils";
 
 @customElement("token-login")
@@ -43,7 +44,7 @@ export class TokenLoginModal extends BaseModal {
   }
 
   private loggingIn() {
-    const loggingText = translateText("token_login_modal.logging_in");
+    const loggingText = translateText("token_login_modal.title");
     return html`
       <div class="flex items-center gap-4">
         <div
@@ -110,7 +111,7 @@ export class TokenLoginModal extends BaseModal {
     }
     if (this.attemptCount > 3) {
       this.close();
-      alert("Login failed. Please try again later.");
+      void showInGameAlert(translateText("error_modal.login_failed"));
       return;
     }
     this.attemptCount++;

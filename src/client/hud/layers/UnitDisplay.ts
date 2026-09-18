@@ -1,6 +1,5 @@
 import { html, LitElement } from "lit";
 import { customElement } from "lit/decorators.js";
-import { assetUrl } from "../../../core/AssetUrls";
 import { EventBus } from "../../../core/EventBus";
 import {
   BuildableUnit,
@@ -15,17 +14,20 @@ import { ToggleStructureEvent } from "../../InputHandler";
 import { UIState } from "../../UIState";
 import { renderNumber, translateText } from "../../Utils";
 import { GameView } from "../../view";
-const warshipIcon = assetUrl("images/BattleshipIconWhite.svg");
-const cityIcon = assetUrl("images/CityIconWhite.svg");
-const factoryIcon = assetUrl("images/FactoryIconWhite.svg");
-const goldCoinIcon = assetUrl("images/GoldCoinIcon.svg");
-const mirvIcon = assetUrl("images/MIRVIcon.svg");
-const missileSiloIcon = assetUrl("images/MissileSiloIconWhite.svg");
-const hydrogenBombIcon = assetUrl("images/MushroomCloudIconWhite.svg");
-const atomBombIcon = assetUrl("images/NukeIconWhite.svg");
-const portIcon = assetUrl("images/PortIcon.svg");
-const samLauncherIcon = assetUrl("images/SamLauncherIconWhite.svg");
-const defensePostIcon = assetUrl("images/ShieldIconWhite.svg");
+import {
+  atomBombIcon,
+  cityIcon,
+  defensePostIcon,
+  factoryIcon,
+  goldCoinIcon,
+  hydrogenBombIcon,
+  mirvIcon,
+  missileSiloIcon,
+  portIcon,
+  samLauncherIcon,
+  warshipIcon,
+} from "../HotbarIcons";
+import { TutorialHighlight, TutorialHighlightEvent } from "../Tutorial";
 
 @customElement("unit-display")
 export class UnitDisplay extends LitElement implements Controller {
@@ -43,6 +45,7 @@ export class UnitDisplay extends LitElement implements Controller {
   private _samLauncher = 0;
   private allDisabled = false;
   private _hoveredUnit: PlayerBuildableUnitType | null = null;
+  private tutorialHighlight: PlayerBuildableUnitType | null = null;
 
   createRenderRoot() {
     return this;
@@ -55,6 +58,25 @@ export class UnitDisplay extends LitElement implements Controller {
     this.keybinds = userSettings.parsedUserKeybinds();
 
     this.allDisabled = BuildMenus.types.every((u) => config.isUnitDisabled(u));
+
+    const highlightUnits: Partial<
+      Record<TutorialHighlight, PlayerBuildableUnitType>
+    > = {
+      city: UnitType.City,
+      port: UnitType.Port,
+      defense_post: UnitType.DefensePost,
+      factory: UnitType.Factory,
+      warship: UnitType.Warship,
+      silo: UnitType.MissileSilo,
+      atom: UnitType.AtomBomb,
+      hydrogen: UnitType.HydrogenBomb,
+      mirv: UnitType.MIRV,
+      sam: UnitType.SAMLauncher,
+    };
+    this.eventBus.on(TutorialHighlightEvent, (e) => {
+      this.tutorialHighlight = (e.target && highlightUnits[e.target]) ?? null;
+      this.requestUpdate();
+    });
     this.requestUpdate();
   }
 
@@ -259,7 +281,8 @@ export class UnitDisplay extends LitElement implements Controller {
             ? ""
             : "opacity-40"} border border-slate-500 rounded-sm px-0.5 pb-0.5 flex items-center gap-0.5 cursor-pointer
              ${selected ? "hover:bg-gray-400/10" : "hover:bg-gray-800"}
-             rounded-sm text-white ${selected ? "bg-slate-400/20" : ""}"
+             rounded-sm text-white ${selected ? "bg-slate-400/20" : ""}
+             ${this.tutorialHighlight === unitType ? "tutorial-highlight" : ""}"
           @click=${() => {
             if (selected) {
               this.uiState.ghostStructure = null;

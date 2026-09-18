@@ -12,6 +12,17 @@ type Owner = Player | TerraNullius;
 
 const REFINE_MAX_SEARCH_AREA = 100 * 100;
 
+// Water components touching a player's shoreline, memoised per player. Valid
+// while neither the player's tiles (hence border) nor the map's water changed.
+// Rebuilding it scanned every border tile on every transport-ship query, which
+// nations issue many times per tick.
+interface ReachableCache {
+  tileVersion: number;
+  waterVersion: number;
+  components: Set<number>;
+}
+const reachableComponents = new WeakMap<Player, ReachableCache>();
+
 export class SpatialQuery {
   private boundedAStar: AStarWaterBounded | null = null;
 
@@ -36,6 +47,12 @@ export class SpatialQuery {
     predicate: (t: TileRef) => boolean,
   ): TileRef | null {
     const map = this.game.map();
+    // `from` can trace back to a network intent. `visited` is a Uint32Array, so
+    // a fractional ref makes `visited[t] = gen` a silent no-op that always reads
+    // back undefined — the dedup fails and the stack grows until it OOMs. Every
+    // caller is individually guarded today; this keeps the trap from being
+    // re-armed by a future one.
+    if (!map.isValidRef(from)) return null;
     const scratch = tileTraversalScratch(this.game);
     const gen = bumpTraversalGeneration(scratch);
     const visited = scratch.visited;
@@ -98,6 +115,72 @@ export class SpatialQuery {
   }
 
   /**
+   * Find the closest shore tile owned by `targetOwner` near `tile` that sits on
+   * a water component reachable from `attacker`'s own shoreline.
+   *
+   * Unlike {@link closestShore}, this skips shores that only border a
+   * disconnected water body (e.g. an inland lake) that the attacker's boats
+   * could never traverse. Returns null when no reachable target shore exists
+   * within `maxDist`.
+   */
+  closestReachableShore(
+    targetOwner: Owner,
+    attacker: Player,
+    tile: TileRef,
+    maxDist: number = 50,
+  ): TileRef | null {
+    const gm = this.game;
+    const targetId = targetOwner.smallID();
+
+    // Water components adjacent to the attacker's own shoreline.
+    const reachable = this.reachableComponents(attacker);
+    if (reachable.size === 0) return null;
+
+    const isValidTile = (t: TileRef) => {
+      if (!gm.isShore(t) || !gm.isLand(t)) return false;
+      if (gm.ownerID(t) !== targetId) return false;
+      const component = gm.getWaterComponent(t);
+      return component !== null && reachable.has(component);
+    };
+
+    // The start tile is at distance 0, so when it qualifies no BFS can beat
+    // it (bfsNearest keeps the first candidate at the minimum distance, and
+    // marks `tile` first). This is the common case when a caller re-checks a
+    // landing tile it already found.
+    if (maxDist >= 0 && gm.map().isValidRef(tile) && isValidTile(tile)) {
+      return tile;
+    }
+
+    return this.bfsNearest(tile, maxDist, isValidTile);
+  }
+
+  private reachableComponents(attacker: Player): Set<number> {
+    const gm = this.game;
+    const tileVersion = attacker.tileChangeVersion();
+    const waterVersion = gm.map().waterVersion();
+    const cached = reachableComponents.get(attacker);
+    if (
+      cached !== undefined &&
+      cached.tileVersion === tileVersion &&
+      cached.waterVersion === waterVersion
+    ) {
+      return cached.components;
+    }
+    const components = new Set<number>();
+    attacker.borderTiles().forEach((t) => {
+      if (!gm.isShore(t) || !gm.isLand(t)) return;
+      const component = gm.getWaterComponent(t);
+      if (component !== null) components.add(component);
+    });
+    reachableComponents.set(attacker, {
+      tileVersion,
+      waterVersion,
+      components,
+    });
+    return components;
+  }
+
+  /**
    * Find closest shore tile by water pathfinding.
    * Returns null for terra nullius (no borderTiles).
    */
@@ -120,7 +203,12 @@ export class SpatialQuery {
         return tComponent === targetComponent;
       };
 
-      const shores = Array.from(player.borderTiles()).filter(isValidTile);
+      // Single pass over the border set (Array.from + filter walked it twice
+      // and allocated a full copy).
+      const shores: TileRef[] = [];
+      player.borderTiles().forEach((t) => {
+        if (isValidTile(t)) shores.push(t);
+      });
       if (shores.length === 0) return null;
 
       const path = PathFinding.Water(gm).findPath(shores, target);

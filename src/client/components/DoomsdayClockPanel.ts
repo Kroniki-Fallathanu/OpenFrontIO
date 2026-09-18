@@ -3,7 +3,9 @@ import { customElement, property } from "lit/decorators.js";
 import { assetUrl } from "../../core/AssetUrls";
 import {
   doomsdayClockDrain,
-  doomsdayClockSideRequiredTiles,
+  doomsdayClockRequiredTiles,
+  doomsdayClockRotQuota,
+  doomsdayClockTroopFloor,
   doomsdayClockWaveState,
 } from "../../core/game/DoomsdayClock";
 import { GameMode, PlayerType, Team } from "../../core/game/Game";
@@ -15,7 +17,8 @@ const doomsdayClockIcon = assetUrl("images/DoomsdayClockSkull.svg");
 
 /**
  * The Doomsday Clock readout: a self-contained panel showing the rising bar, the
- * side's share vs the threshold, the stage (Stable/Unstable/Collapsing) and the
+ * side's share vs the threshold, the stage (Stable/Unstable/Collapsing/Decaying)
+ * and the
  * wave countdown. Embedded by game-right-sidebar so it stacks (centered) under
  * the game timer; it hides only when the mode is off or after a winner. A
  * spectator, replay viewer, or eliminated / not-spawned player still sees the
@@ -42,26 +45,24 @@ export class DoomsdayClockPanel extends LitElement {
   }
 
   // The player's "side" (matching the sim): themselves in FFA, their whole team
-  // otherwise. Returns the combined tiles and the headcount (the sim scales the
-  // threshold by headcount, so the HUD needs it too).
-  private sideStats(me: ReturnType<GameView["myPlayer"]>): {
-    tiles: number;
-    size: number;
-  } {
-    if (!me) return { tiles: 0, size: 1 };
-    const ffa = this.game.config().gameConfig().gameMode === GameMode.FFA;
+  // otherwise. The sim judges a side on its combined territory against the same
+  // bar as a solo player, so the HUD only needs the tile sum.
+  // A side is one player in FFA and a whole team otherwise — same split as the sim.
+  private isTeamGame(): boolean {
+    return this.game.config().gameConfig().gameMode !== GameMode.FFA;
+  }
+
+  private sideTiles(me: ReturnType<GameView["myPlayer"]>): number {
+    if (!me) return 0;
     const myTeam = me.team();
-    if (ffa || myTeam === null) return { tiles: me.numTilesOwned(), size: 1 };
-    const mates = this.game
+    if (!this.isTeamGame() || myTeam === null) return me.numTilesOwned();
+    return this.game
       .playerViews()
       .filter(
         (p) =>
           p.team() === myTeam && p.isAlive() && p.type() !== PlayerType.Bot,
-      );
-    return {
-      tiles: mates.reduce((sum, p) => sum + p.numTilesOwned(), 0),
-      size: mates.length,
-    };
+      )
+      .reduce((sum, p) => sum + p.numTilesOwned(), 0);
   }
 
   // Localized team name (e.g. "Red"), matching TeamStats; falls back to the raw
@@ -91,23 +92,26 @@ export class DoomsdayClockPanel extends LitElement {
     const elapsed = Math.floor(this.game.elapsedGameSeconds());
     const land = this.game.numLandTiles() - this.game.numTilesWithFallout();
     const myTeam = me?.team() ?? null;
-    const { tiles: yourTiles, size: mySize } = this.sideStats(me);
-    // Threshold is scaled by the side's headcount (same as the sim).
-    const requiredTiles = doomsdayClockSideRequiredTiles(
-      sd.speed,
+    const yourTiles = this.sideTiles(me);
+    // Same bar for every side, solo or team (same as the sim) — so the zone
+    // readout is one universal, monotonic number for every player.
+    const requiredTiles = doomsdayClockRequiredTiles(
+      { ...sd, teamGame: this.isTeamGame() },
       land,
       elapsed,
-      mySize,
     );
-    const wave = doomsdayClockWaveState(sd.speed, elapsed);
-    // Wave readout percentages scale by headcount too (capped at the whole map).
-    const scalePct = (p: number) => Math.min(100, p * mySize);
+    const wave = doomsdayClockWaveState(
+      { ...sd, teamGame: this.isTeamGame() },
+      elapsed,
+    );
     // Match the sim: no land -> no bar, no percentages (avoid div-by-zero / >100%).
     const requiredPct = land > 0 ? (requiredTiles / land) * 100 : 0;
     const yourPct = land > 0 ? (yourTiles / land) * 100 : 0;
     const flagged = me?.inDoomsdayClock() ?? false;
     const secondsUnder = Math.floor((me?.doomsdayClockTicks() ?? 0) / 10);
     const draining = flagged && secondsUnder >= sd.warnSeconds;
+    // From the sim, not re-derived here — see PlayerImpl.isDecaying.
+    const decaying = draining && (me?.isDecaying() ?? false);
     // Safe but within 10% (relative) of the bar: e.g. at 9% when the bar is 10%,
     // or 0.9% when it's 1%. About to be caught, so it blinks red too.
     const nearDanger =
@@ -119,15 +123,15 @@ export class DoomsdayClockPanel extends LitElement {
     // AND while collapsing, so you can still see the bar rising as you bleed.
     const zoneDetail = wave.done
       ? translateText("doomsday_clock.final", {
-          pct: scalePct(wave.currentPercent),
+          pct: wave.currentPercent,
         })
       : wave.growing
         ? translateText("doomsday_clock.growing", {
-            pct: scalePct(wave.targetPercent),
+            pct: wave.targetPercent,
             time: this.secondsToHms(wave.secondsToTarget),
           })
         : translateText("doomsday_clock.next_wave", {
-            pct: scalePct(wave.targetPercent),
+            pct: wave.targetPercent,
             time: this.secondsToHms(wave.secondsToNextGrowth),
           });
 
@@ -137,17 +141,24 @@ export class DoomsdayClockPanel extends LitElement {
     let status = "";
     let statusClass = "";
     let detail = zoneDetail;
-    if (live && draining && me) {
-      // Drain is a % of max-troop capacity that stops at the floor
-      // (drainFloorPercent of max); show the actual per-second loss, i.e. only
-      // what sits above the floor (renderTroops handles the /10 display unit).
+    if (live && draining && me && decaying) {
+      // Rot is a deadline, not a rate, so the per-second loss climbs as the
+      // deadline nears. Same shared quota the sim applies, keyed on this player's
+      // own tiles (rot is per player, unlike the team share shown above).
+      status = translateText("doomsday_clock.decaying", {
+        rate: doomsdayClockRotQuota(me.numTilesOwned(), secondsUnder, sd),
+      });
+      statusClass = "text-red-500 font-bold";
+    } else if (live && draining && me) {
+      // Drain is a % of max-troop capacity that stops at the floor; show the
+      // actual per-second loss, i.e. only what sits above the floor (renderTroops
+      // handles the /10 display unit). The floor comes from the shared helper, not
+      // a local formula, because it decays — the readout would otherwise overstate
+      // the loss for the whole comeback window.
       const maxTroops = this.game.config().maxTroops(me);
-      const floor = Math.floor((maxTroops * sd.drainFloorPercent) / 100);
-      const chunk = doomsdayClockDrain(
-        maxTroops,
-        secondsUnder - sd.warnSeconds,
-        sd,
-      );
+      const secondsPastWarn = secondsUnder - sd.warnSeconds;
+      const floor = doomsdayClockTroopFloor(maxTroops, secondsPastWarn, sd);
+      const chunk = doomsdayClockDrain(maxTroops, secondsPastWarn, sd);
       status = translateText("doomsday_clock.collapsing", {
         rate: renderTroops(Math.max(0, Math.min(me.troops() - floor, chunk))),
       });
@@ -172,7 +183,7 @@ export class DoomsdayClockPanel extends LitElement {
         ? "sd-pulse-orange"
         : "";
     const panel =
-      "w-fit flex flex-col gap-1.5 py-2 px-4 bg-gray-800/92 backdrop-blur-sm shadow-xs min-[1200px]:rounded-lg rounded-bl-lg text-white text-sm";
+      "w-fit flex flex-col gap-1.5 py-2 px-4 bg-gray-800/92 backdrop-blur-sm shadow-xs rounded-bl-lg text-white text-sm";
 
     return html`
       <style>

@@ -12,6 +12,8 @@
  */
 
 import type { Config } from "../../../core/configuration/Config";
+import type { MapLayer } from "../../../core/game/TerrainMapLoader";
+import type { SpiralRibbon } from "../frame/SpiralTrails";
 import type {
   AttackRingInput,
   BonusEvent,
@@ -25,6 +27,7 @@ import type {
   PlayerStatic,
   PlayerStatusData,
   RendererConfig,
+  TerrainRect,
   UnitState,
 } from "../types";
 import type { SpawnCenter } from "./passes/SpawnOverlayPass";
@@ -35,10 +38,13 @@ import type { RenderSettings } from "./RenderSettings";
 export class MapRenderer {
   private renderer: GPURenderer | null = null;
   private resizeObs: ResizeObserver | null = null;
-  // Persisted so a WebGL context restore (which recreates GPURenderer via
-  // initRenderer) reapplies the user's chosen glow strength instead of
-  // resetting it to the pass default until the next settings change.
-  private smallPlayerGlowStrength = 1;
+  // Stored layer data for context-restore re-creation.
+  private storedLayers: MapLayer[] = [];
+  private storedLayerImages: Map<string, ImageBitmap> = new Map();
+  // Layer state that survives context loss (GPU textures do not).
+  private layerVisibility = new Map<string, boolean>();
+  private layerAlpha = new Map<string, number>();
+  private layerDestroyedMasks = new Map<string, Uint8Array>();
 
   /**
    * Called after a lost WebGL context is restored and the renderer has been
@@ -95,8 +101,6 @@ export class MapRenderer {
 
     const rect = this.canvas.getBoundingClientRect();
     if (rect.width > 0) this.renderer.resize(rect.width, rect.height);
-    // Reapply state that lives outside RenderSettings so it survives a restore.
-    this.renderer.setSmallPlayerGlowStrength(this.smallPlayerGlowStrength);
   };
 
   private handleContextLost = (e: Event) => {
@@ -109,6 +113,22 @@ export class MapRenderer {
 
   private handleContextRestored = () => {
     this.initRenderer();
+    // Re-apply stored layers to the new renderer.
+    if (this.storedLayers.length > 0 && this.storedLayerImages.size > 0) {
+      this.renderer?.setMapLayers(this.storedLayers, this.storedLayerImages);
+      // Re-apply visibility overrides.
+      for (const [id, vis] of this.layerVisibility) {
+        this.renderer?.setLayerVisible(id, vis);
+      }
+      // Re-apply alpha overrides.
+      for (const [id, alpha] of this.layerAlpha) {
+        this.renderer?.setLayerAlpha(id, alpha);
+      }
+      // Re-apply destroyed masks.
+      for (const [id, mask] of this.layerDestroyedMasks) {
+        this.renderer?.setLayerDestroyedMask(id, mask);
+      }
+    }
     this.onContextRestored?.();
   };
 
@@ -149,6 +169,9 @@ export class MapRenderer {
   ): void {
     this.renderer?.uploadTileAndTrailState(tileState, trailState);
   }
+  updateSpiralRibbons(ribbons: readonly SpiralRibbon[]): void {
+    this.renderer?.updateSpiralRibbons(ribbons);
+  }
   updatePalette(paletteData: Float32Array): void {
     this.renderer?.updatePalette(paletteData);
   }
@@ -163,7 +186,20 @@ export class MapRenderer {
   ): void {
     this.renderer?.addPlayers(players, paletteData, patternMeta, patternData);
   }
-  setPlayerSkin(smallID: number, url: string): void {
+  updatePlayerCosmetics(
+    players: PlayerStatic[],
+    paletteData: Float32Array,
+    patternMeta: Float32Array,
+    patternData: Uint8Array,
+  ): void {
+    this.renderer?.updatePlayerCosmetics(
+      players,
+      paletteData,
+      patternMeta,
+      patternData,
+    );
+  }
+  setPlayerSkin(smallID: number, url: string | null): void {
     this.renderer?.setPlayerSkin(smallID, url);
   }
   initSkinAtlas(urls: readonly string[]): void {
@@ -207,12 +243,19 @@ export class MapRenderer {
   applyBonusEvents(events: BonusEvent[]): void {
     this.renderer?.applyBonusEvents(events);
   }
+  triggerBlockedFlash(tileX: number, tileY: number): void {
+    this.renderer?.triggerBlockedFlash(tileX, tileY);
+  }
   applyRailroadDust(tileRefs: number[]): void {
     this.renderer?.applyRailroadDust(tileRefs);
   }
-  /** Refresh terrain texels whose underlying terrain byte changed (water nukes). */
-  applyTerrainDelta(refs: readonly number[], terrainBytes: Uint8Array): void {
-    this.renderer?.applyTerrainDelta(refs, terrainBytes);
+  /**
+   * Refresh terrain texels whose underlying terrain byte changed (water
+   * nukes). Each rect's bytes are stored row-major, concatenated in `bytes`
+   * in rect order.
+   */
+  applyTerrainRects(rects: readonly TerrainRect[], bytes: Uint8Array): void {
+    this.renderer?.applyTerrainRects(rects, bytes);
   }
 
   /** Rebuild the terrain texture from current settings (e.g. ocean color). */
@@ -250,10 +293,45 @@ export class MapRenderer {
     this.renderer?.updateSmallPlayerGlow(set);
   }
 
-  /** Set the small-player glow Strength (0 = off, 1 = default, capped at 5). */
-  setSmallPlayerGlowStrength(strength: number): void {
-    this.smallPlayerGlowStrength = strength;
-    this.renderer?.setSmallPlayerGlowStrength(strength);
+  // ---- Map layers ----
+
+  /** Set up map-layer passes from the loaded layer data. */
+  setMapLayers(layers: MapLayer[], images: Map<string, ImageBitmap>): void {
+    this.storedLayers = layers;
+    this.storedLayerImages = images;
+    this.renderer?.setMapLayers(layers, images);
+  }
+
+  /** Toggle visibility of a single map layer. */
+  setLayerVisible(layerId: string, visible: boolean): void {
+    this.layerVisibility.set(layerId, visible);
+    this.renderer?.setLayerVisible(layerId, visible);
+  }
+
+  /** Set the alpha multiplier for a single map layer (0–1). */
+  setLayerAlpha(layerId: string, alpha: number): void {
+    this.layerAlpha.set(layerId, alpha);
+    this.renderer?.setLayerAlpha(layerId, alpha);
+  }
+
+  /** Batch-mark tiles as destroyed for a nukeable layer. */
+  markLayerTilesDestroyed(layerId: string, tileIndices: number[]): void {
+    // Accumulate into the CPU-side mask for context-restore.
+    let mask = this.layerDestroyedMasks.get(layerId);
+    if (!mask) {
+      mask = new Uint8Array(this.header.mapWidth * this.header.mapHeight);
+      this.layerDestroyedMasks.set(layerId, mask);
+    }
+    for (const t of tileIndices) {
+      if (t >= 0 && t < mask.length) mask[t] = 1;
+    }
+    this.renderer?.markLayerTilesDestroyed(layerId, tileIndices);
+  }
+
+  /** Bulk-update the destroyed mask for a nukeable layer. */
+  setLayerDestroyedMask(layerId: string, mask: Uint8Array): void {
+    this.layerDestroyedMasks.set(layerId, new Uint8Array(mask));
+    this.renderer?.setLayerDestroyedMask(layerId, mask);
   }
 
   // ---- Selection box ----
@@ -288,9 +366,6 @@ export class MapRenderer {
   }
   setGridView(active: boolean): void {
     this.renderer?.setGridView(active);
-  }
-  setShowPatterns(active: boolean): void {
-    this.renderer?.setShowPatterns(active);
   }
   setHighlightOwner(ownerID: number): void {
     this.renderer?.setHighlightOwner(ownerID);

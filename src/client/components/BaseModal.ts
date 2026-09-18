@@ -2,7 +2,7 @@ import { html, LitElement, TemplateResult } from "lit";
 import { property, query, state } from "lit/decorators.js";
 import { modalRouter } from "../ModalRouter";
 import "./baseComponents/Modal";
-import type { OModalTab } from "./baseComponents/Modal";
+import type { OModal, OModalTab } from "./baseComponents/Modal";
 import "./ConfirmDialog";
 
 /**
@@ -17,6 +17,7 @@ export interface ModalConfig {
   hideCloseButton?: boolean;
   alwaysMaximized?: boolean;
   maxWidth?: string;
+  hideTabs?: boolean;
 }
 
 /**
@@ -51,11 +52,7 @@ export abstract class BaseModal extends LitElement {
   // from that nested call, which would clobber state set by the outer call.
   private opening = false;
 
-  @query("o-modal") protected modalEl?: HTMLElement & {
-    open: () => void;
-    close: () => void;
-    onClose?: () => void;
-  };
+  @query("o-modal") protected modalEl?: OModal;
 
   // ---- Subclass configuration ----
   // Override modalConfig() to configure the rendered <o-modal>. Defaults match
@@ -151,7 +148,7 @@ export abstract class BaseModal extends LitElement {
         ?hideCloseButton=${cfg.hideCloseButton ?? true}
         ?alwaysMaximized=${cfg.alwaysMaximized ?? false}
         maxWidth=${cfg.maxWidth ?? ""}
-        .tabs=${tabs}
+        .tabs=${cfg.hideTabs ? [] : tabs}
         .activeTab=${this.activeTab}
         .onTabChange=${(key: string) => this.setActiveTab(key)}
       >

@@ -8,7 +8,6 @@ import {
   showToast,
   translateText,
 } from "../client/Utils";
-import { hasActiveSubscription } from "../core/ApiSchemas";
 import { GameEnv } from "../core/configuration/Config";
 import { EventBus } from "../core/EventBus";
 import { DoomsdayClockSpeed } from "../core/game/DoomsdayClock";
@@ -23,13 +22,11 @@ import { UserSettings } from "../core/game/UserSettings";
 import {
   ClientInfo,
   GameConfig,
-  GameInfo,
   LobbyInfoEvent,
   TeamCountConfig,
   isValidGameID,
 } from "../core/Schemas";
-import { getUserMe, setLobbyListed } from "./Api";
-import { getPlayToken } from "./Auth";
+import { createLobby, getUserMe, setLobbyListed } from "./Api";
 import "./components/baseComponents/Modal";
 import { BaseModal } from "./components/BaseModal";
 import "./components/ConfirmDialog";
@@ -38,6 +35,7 @@ import "./components/GameConfigSettings";
 import "./components/InputCard";
 import "./components/LobbyPlayerView";
 import "./components/ToggleInputCard";
+import { inviteFriendsButton } from "./components/ui/InviteFriendsButton";
 import { modalHeader } from "./components/ui/ModalHeader";
 import { crazyGamesSDK } from "./CrazyGamesSDK";
 import { JoinLobbyEvent } from "./Main";
@@ -88,6 +86,8 @@ export class HostLobbyModal extends BaseModal {
   @state() private customAllianceMinutes: number | undefined = undefined;
   @state() private doomsdayClock: boolean = false;
   @state() private doomsdayClockSpeed: DoomsdayClockSpeed = "normal";
+  @state() private overtime: boolean = false;
+  @state() private overtimeStartMinutes: number | undefined = undefined;
   @state() private anonymizeNames: boolean = false;
   @state() private nameReveals: string[] = [];
   @state() private whitelistEnabled: boolean = false;
@@ -108,8 +108,9 @@ export class HostLobbyModal extends BaseModal {
   @state() private lobbyCreatorClientID: string = "";
   @state() private lobbyStartAt: number | null = null;
   @state() private serverTimeOffset: number = 0;
-  // Whether this user may actually make the lobby public (subscribers, or
-  // anyone in dev). The toggle itself is always shown.
+  // Whether this user may actually make the lobby public (the API's
+  // canCreatePublicLobbies entitlement, or anyone in dev). The toggle itself
+  // is always shown.
   @state() private canListPublicly: boolean = false;
   @state() private publiclyListed: boolean = false;
   @state() private showSubscriptionRequired: boolean = false;
@@ -143,9 +144,9 @@ export class HostLobbyModal extends BaseModal {
     if (lobby.clients) {
       this.clients = lobby.clients;
     }
-    // The server can delist on its own (join whitelist enabled, duplicate
-    // creator resolved by the master); follow its state unless our own
-    // toggle request is mid-flight.
+    // The server can delist on its own (duplicate creator / cap overflow
+    // resolved by the master); follow its state unless our own toggle
+    // request is mid-flight.
     if (!this.listingRequestInFlight && lobby.listed !== undefined) {
       this.publiclyListed = lobby.listed;
     }
@@ -167,7 +168,12 @@ export class HostLobbyModal extends BaseModal {
         return link;
       }
     }
-    return `${window.location.origin}/${ClientEnv.workerPath(this.lobbyId)}/game/${this.lobbyId}?lobby&s=${encodeURIComponent(this.lobbyUrlSuffix)}`;
+    // window.location.origin is deliberate here, NOT ClientEnv.shareOrigin():
+    // this URL only ever reaches history.replaceState (updateLobbyHistory), and
+    // replaceState to a different origin throws a SecurityError. The link the
+    // host actually shares is built separately by copy-button, which does use
+    // shareOrigin.
+    return `${window.location.origin}${ClientEnv.gamePath(this.lobbyId)}?lobby&s=${encodeURIComponent(this.lobbyUrlSuffix)}`;
   }
 
   private async constructUrl(): Promise<string> {
@@ -220,19 +226,35 @@ export class HostLobbyModal extends BaseModal {
         this.close();
       },
       ariaLabel: translateText("common.back"),
-      rightContent: html`
-        <copy-button
+      // Both answer "get my friends into this lobby", so they sit together —
+      // the host is the player holding the code and deciding who joins, and
+      // was the one surface the invite button originally missed. Paired behind
+      // a wrapper only when the invite is present, so a browser renders exactly
+      // the markup it did before.
+      rightContent: (() => {
+        const copy = html`<copy-button
           .lobbyId=${this.lobbyId}
           .lobbySuffix=${this.lobbyUrlSuffix}
           include-lobby-query
-        ></copy-button>
-      `,
+        ></copy-button>`;
+        // Not until there is a lobby to invite anyone into. createLobby()
+        // assigns lobbyId asynchronously and the modal renders before it
+        // lands, so without this the button is live during that window with
+        // no shadow lobby behind it — the invite would silently no-op. The
+        // join modal gets this free from its own !currentLobbyId early return.
+        const invite = this.lobbyId ? inviteFriendsButton() : undefined;
+        return invite
+          ? html`<div class="flex items-center gap-2">${copy}${invite}</div>`
+          : copy;
+      })(),
     });
   }
 
   // Private/Public segmented toggle in the header. Shown to everyone;
   // non-subscribers get a subscription-required dialog instead of a listing
-  // request (the server re-checks the subscription regardless).
+  // request (the server re-checks the subscription regardless). Listing is
+  // one-way (the server rejects unlisting), so the Private segment goes away
+  // once the lobby is listed.
   private renderVisibilityToggle() {
     const segment = (labelKey: string, isPublic: boolean) => html`
       <button
@@ -249,7 +271,9 @@ export class HostLobbyModal extends BaseModal {
       <div
         class="flex items-center rounded-full border border-white/10 bg-white/5 p-0.5 shrink-0"
       >
-        ${segment("host_modal.visibility_private", false)}
+        ${this.publiclyListed
+          ? nothing
+          : segment("host_modal.visibility_private", false)}
         ${segment("host_modal.visibility_public", true)}
       </div>
       ${this.renderAutoStartTimer()}
@@ -305,20 +329,20 @@ export class HostLobbyModal extends BaseModal {
       secondsRemaining === null
         ? this.clients.length === 1
           ? translateText("host_modal.waiting")
-          : translateText("host_modal.start")
+          : translateText("game_settings.start")
         : translateText("host_modal.starting_in", {
             time: renderDuration(secondsRemaining),
           });
 
     const inputCards = [
       html`<toggle-input-card
-        .labelKey=${"host_modal.max_timer"}
+        .labelKey=${"game_settings.max_timer"}
         .checked=${this.maxTimer}
         .inputMin=${1}
         .inputMax=${120}
         .inputValue=${this.maxTimerValue}
-        .inputAriaLabel=${translateText("host_modal.max_timer")}
-        .inputPlaceholder=${translateText("host_modal.mins_placeholder")}
+        .inputAriaLabel=${translateText("game_settings.max_timer")}
+        .inputPlaceholder=${translateText("game_settings.mins_placeholder")}
         .defaultInputValue=${30}
         .minValidOnEnable=${1}
         .onToggle=${this.handleMaxTimerToggle}
@@ -333,7 +357,7 @@ export class HostLobbyModal extends BaseModal {
         .inputStep=${"1"}
         .inputValue=${this.startDelayValue}
         .inputAriaLabel=${translateText("host_modal.start_delay")}
-        .inputPlaceholder=${translateText("host_modal.start_delay_placeholder")}
+        .inputPlaceholder=${"3"}
         .defaultInputValue=${3}
         .onChange=${this.handleStartDelayValueChanges}
         .onKeyDown=${this.handleStartDelayValueKeyDown}
@@ -346,7 +370,7 @@ export class HostLobbyModal extends BaseModal {
         .inputStep=${1}
         .inputValue=${this.spawnImmunityDurationMinutes}
         .inputAriaLabel=${translateText("host_modal.player_immunity_duration")}
-        .inputPlaceholder=${translateText("host_modal.mins_placeholder")}
+        .inputPlaceholder=${translateText("game_settings.mins_placeholder")}
         .defaultInputValue=${5}
         .minValidOnEnable=${0}
         .onToggle=${this.handleSpawnImmunityToggle}
@@ -354,14 +378,14 @@ export class HostLobbyModal extends BaseModal {
         .onKeyDown=${this.handleSpawnImmunityDurationKeyDown}
       ></toggle-input-card>`,
       html`<toggle-input-card
-        .labelKey=${"host_modal.custom_alliances"}
+        .labelKey=${"game_settings.custom_alliances"}
         .checked=${this.customAlliances}
         .inputMin=${0}
         .inputMax=${15}
         .inputStep=${1}
         .inputValue=${this.customAllianceMinutes}
-        .inputAriaLabel=${translateText("host_modal.custom_alliances")}
-        .inputPlaceholder=${translateText("host_modal.mins_placeholder")}
+        .inputAriaLabel=${translateText("game_settings.custom_alliances")}
+        .inputPlaceholder=${translateText("game_settings.mins_placeholder")}
         .defaultInputValue=${0}
         .minValidOnEnable=${0}
         .zeroLabel=${`(${translateText("public_game_modifier.disable_alliances")})`}
@@ -370,17 +394,30 @@ export class HostLobbyModal extends BaseModal {
         .onKeyDown=${this.handleCustomAllianceMinutesKeyDown}
       ></toggle-input-card>`,
       html`<toggle-input-card
-        .labelKey=${"host_modal.gold_multiplier"}
+        .labelKey=${"game_settings.overtime"}
+        .checked=${this.overtime}
+        .inputMin=${1}
+        .inputMax=${120}
+        .inputStep=${1}
+        .inputValue=${this.overtimeStartMinutes}
+        .inputAriaLabel=${translateText("game_settings.overtime")}
+        .inputPlaceholder=${translateText("game_settings.mins_placeholder")}
+        .defaultInputValue=${30}
+        .minValidOnEnable=${1}
+        .onToggle=${this.handleOvertimeToggle}
+        .onInput=${this.handleOvertimeMinutesInput}
+        .onKeyDown=${this.handleOvertimeMinutesKeyDown}
+      ></toggle-input-card>`,
+      html`<toggle-input-card
+        .labelKey=${"game_settings.gold_multiplier"}
         .checked=${this.goldMultiplier}
         .inputId=${"gold-multiplier-value"}
         .inputMin=${0.1}
         .inputMax=${1000}
         .inputStep=${"any"}
         .inputValue=${this.goldMultiplierValue}
-        .inputAriaLabel=${translateText("host_modal.gold_multiplier")}
-        .inputPlaceholder=${translateText(
-          "host_modal.gold_multiplier_placeholder",
-        )}
+        .inputAriaLabel=${translateText("game_settings.gold_multiplier")}
+        .inputPlaceholder=${"2.0x"}
         .defaultInputValue=${2}
         .minValidOnEnable=${0.1}
         .onToggle=${this.handleGoldMultiplierToggle}
@@ -388,17 +425,15 @@ export class HostLobbyModal extends BaseModal {
         .onKeyDown=${this.handleGoldMultiplierValueKeyDown}
       ></toggle-input-card>`,
       html`<toggle-input-card
-        .labelKey=${"host_modal.starting_gold"}
+        .labelKey=${"game_settings.starting_gold"}
         .checked=${this.startingGold}
         .inputId=${"starting-gold-value"}
         .inputMin=${0.1}
         .inputMax=${1000}
         .inputStep=${"any"}
         .inputValue=${this.startingGoldValue}
-        .inputAriaLabel=${translateText("host_modal.starting_gold")}
-        .inputPlaceholder=${translateText(
-          "host_modal.starting_gold_placeholder",
-        )}
+        .inputAriaLabel=${translateText("game_settings.starting_gold")}
+        .inputPlaceholder=${"5"}
         .defaultInputValue=${5}
         .minValidOnEnable=${0.1}
         .onToggle=${this.handleStartingGoldToggle}
@@ -429,17 +464,15 @@ export class HostLobbyModal extends BaseModal {
 
     const hostCheatInputCards = [
       html`<toggle-input-card
-        .labelKey=${"host_modal.gold_multiplier"}
+        .labelKey=${"game_settings.gold_multiplier"}
         .checked=${this.hostCheatGoldMultiplier}
         .inputId=${"host-cheat-gold-multiplier-value"}
         .inputMin=${0.1}
         .inputMax=${1000}
         .inputStep=${"any"}
         .inputValue=${this.hostCheatGoldMultiplierValue}
-        .inputAriaLabel=${translateText("host_modal.gold_multiplier")}
-        .inputPlaceholder=${translateText(
-          "host_modal.gold_multiplier_placeholder",
-        )}
+        .inputAriaLabel=${translateText("game_settings.gold_multiplier")}
+        .inputPlaceholder=${"2.0x"}
         .defaultInputValue=${2}
         .minValidOnEnable=${0.1}
         .onToggle=${this.handleHostCheatGoldMultiplierToggle}
@@ -447,17 +480,15 @@ export class HostLobbyModal extends BaseModal {
         .onKeyDown=${this.handleHostCheatGoldMultiplierValueKeyDown}
       ></toggle-input-card>`,
       html`<toggle-input-card
-        .labelKey=${"host_modal.starting_gold"}
+        .labelKey=${"game_settings.starting_gold"}
         .checked=${this.hostCheatStartingGold}
         .inputId=${"host-cheat-starting-gold-value"}
         .inputMin=${0.1}
         .inputMax=${1000}
         .inputStep=${"any"}
         .inputValue=${this.hostCheatStartingGoldValue}
-        .inputAriaLabel=${translateText("host_modal.starting_gold")}
-        .inputPlaceholder=${translateText(
-          "host_modal.starting_gold_placeholder",
-        )}
+        .inputAriaLabel=${translateText("game_settings.starting_gold")}
+        .inputPlaceholder=${"5"}
         .defaultInputValue=${5}
         .minValidOnEnable=${0.1}
         .onToggle=${this.handleHostCheatStartingGoldToggle}
@@ -491,25 +522,25 @@ export class HostLobbyModal extends BaseModal {
                 selected: this.teamCount,
               },
               options: {
-                titleKey: "host_modal.options_title",
+                titleKey: "game_settings.options",
                 bots: {
                   value: this.bots,
-                  labelKey: "host_modal.bots",
-                  disabledKey: "host_modal.bots_disabled",
+                  labelKey: "game_settings.bots",
+                  disabledKey: "common.disabled",
                 },
                 nations: {
                   value: this.nations,
                   defaultValue: this.defaultNationCount,
-                  labelKey: "host_modal.nations",
-                  disabledKey: "host_modal.nations_disabled",
+                  labelKey: "game_settings.nations",
+                  disabledKey: "common.disabled",
                 },
                 toggles: [
                   {
-                    labelKey: "host_modal.instant_build",
+                    labelKey: "game_settings.instant_build",
                     checked: this.instantBuild,
                   },
                   {
-                    labelKey: "host_modal.random_spawn",
+                    labelKey: "game_settings.random_spawn",
                     checked: this.randomSpawn,
                   },
                   {
@@ -521,15 +552,15 @@ export class HostLobbyModal extends BaseModal {
                     checked: this.donateTroops,
                   },
                   {
-                    labelKey: "host_modal.infinite_gold",
+                    labelKey: "game_settings.infinite_gold",
                     checked: this.infiniteGold,
                   },
                   {
-                    labelKey: "host_modal.infinite_troops",
+                    labelKey: "game_settings.infinite_troops",
                     checked: this.infiniteTroops,
                   },
                   {
-                    labelKey: "host_modal.compact_map",
+                    labelKey: "game_settings.compact_map",
                     checked: this.compactMap,
                   },
                   {
@@ -537,11 +568,11 @@ export class HostLobbyModal extends BaseModal {
                     checked: this.anonymizeNames,
                   },
                   {
-                    labelKey: "host_modal.water_nukes",
+                    labelKey: "game_settings.water_nukes",
                     checked: this.waterNukes,
                   },
                   {
-                    labelKey: "host_modal.doomsday_clock",
+                    labelKey: "game_settings.doomsday_clock",
                     checked: this.doomsdayClock,
                     doomsdayClockSpeed: this.doomsdayClockSpeed,
                   },
@@ -564,18 +595,18 @@ export class HostLobbyModal extends BaseModal {
                 visible: this.hostCheatsEnabled && !this.publiclyListed,
                 toggles: [
                   {
-                    labelKey: "host_modal.infinite_gold",
+                    labelKey: "game_settings.infinite_gold",
                     checked: this.hostCheatInfiniteGold,
                   },
                   {
-                    labelKey: "host_modal.infinite_troops",
+                    labelKey: "game_settings.infinite_troops",
                     checked: this.hostCheatInfiniteTroops,
                   },
                 ],
                 inputCards: hostCheatInputCards,
               },
               unitTypes: {
-                titleKey: "host_modal.enables_title",
+                titleKey: "game_settings.disable_units",
                 disabledUnits: this.disabledUnits,
               },
             }}
@@ -653,11 +684,11 @@ export class HostLobbyModal extends BaseModal {
     this.leaveLobbyOnClose = true;
     this.startLobbyUpdates();
     void getUserMe().then((userMe) => {
-      // Dev skips the subscription gate (matching the server) so the
+      // Dev skips the entitlement gate (matching the server) so the
       // listing flow is testable locally.
       this.canListPublicly =
         ClientEnv.env() === GameEnv.Dev ||
-        (userMe !== false && hasActiveSubscription(userMe));
+        (userMe !== false && userMe.player.canCreatePublicLobbies);
     });
 
     // Attach mode: the server already minted this successor lobby with us as
@@ -826,6 +857,8 @@ export class HostLobbyModal extends BaseModal {
     this.customAllianceMinutes = undefined;
     this.doomsdayClock = false;
     this.doomsdayClockSpeed = "normal";
+    this.overtime = false;
+    this.overtimeStartMinutes = undefined;
     this.anonymizeNames = false;
     this.nameReveals = [];
     this.whitelistEnabled = false;
@@ -900,10 +933,10 @@ export class HostLobbyModal extends BaseModal {
     const { labelKey, checked } = customEvent.detail;
 
     switch (labelKey) {
-      case "host_modal.instant_build":
+      case "game_settings.instant_build":
         this.handleInstantBuildChange(checked);
         break;
-      case "host_modal.random_spawn":
+      case "game_settings.random_spawn":
         this.handleRandomSpawnChange(checked);
         break;
       case "host_modal.donate_gold":
@@ -912,24 +945,24 @@ export class HostLobbyModal extends BaseModal {
       case "host_modal.donate_troops":
         this.handleDonateTroopsChange(checked);
         break;
-      case "host_modal.infinite_gold":
+      case "game_settings.infinite_gold":
         this.handleInfiniteGoldChange(checked);
         break;
-      case "host_modal.infinite_troops":
+      case "game_settings.infinite_troops":
         this.handleInfiniteTroopsChange(checked);
         break;
-      case "host_modal.compact_map":
+      case "game_settings.compact_map":
         this.handleCompactMapChange(checked);
         break;
       case "host_modal.anonymous_players":
         this.anonymizeNames = checked;
         this.putGameConfig();
         break;
-      case "host_modal.water_nukes":
+      case "game_settings.water_nukes":
         this.waterNukes = checked;
         this.putGameConfig();
         break;
-      case "host_modal.doomsday_clock":
+      case "game_settings.doomsday_clock":
         this.doomsdayClock = checked;
         this.putGameConfig();
         break;
@@ -950,11 +983,11 @@ export class HostLobbyModal extends BaseModal {
     const { labelKey, checked } = customEvent.detail;
 
     switch (labelKey) {
-      case "host_modal.infinite_gold":
+      case "game_settings.infinite_gold":
         this.hostCheatInfiniteGold = checked;
         this.putGameConfig();
         break;
-      case "host_modal.infinite_troops":
+      case "game_settings.infinite_troops":
         this.hostCheatInfiniteTroops = checked;
         this.putGameConfig();
         break;
@@ -1008,6 +1041,33 @@ export class HostLobbyModal extends BaseModal {
   ) => {
     this.maxTimer = checked;
     this.maxTimerValue = toOptionalNumber(value);
+    this.putGameConfig();
+  };
+
+  private handleOvertimeToggle = (
+    checked: boolean,
+    value: number | string | undefined,
+  ) => {
+    this.overtime = checked;
+    this.overtimeStartMinutes = toOptionalNumber(value);
+    this.putGameConfig();
+  };
+
+  private handleOvertimeMinutesKeyDown = (e: KeyboardEvent) => {
+    preventDisallowedKeys(e, ["-", "+", "e"]);
+  };
+
+  private handleOvertimeMinutesInput = (e: Event) => {
+    const input = e.target as HTMLInputElement;
+    const value = parseBoundedIntegerFromInput(input, {
+      min: 1,
+      max: 120,
+      stripPattern: /[e+-]/gi,
+    });
+    if (value === undefined) {
+      return;
+    }
+    this.overtimeStartMinutes = value;
     this.putGameConfig();
   };
 
@@ -1378,6 +1438,14 @@ export class HostLobbyModal extends BaseModal {
             doomsdayClock: this.doomsdayClock
               ? { enabled: true, speed: this.doomsdayClockSpeed }
               : { enabled: false },
+            // Same {enabled:false} rule as doomsdayClock above: undefined is
+            // dropped by JSON.stringify, so the toggle could never turn off.
+            overtime: this.overtime
+              ? {
+                  enabled: true,
+                  startMinutes: this.overtimeStartMinutes ?? 30,
+                }
+              : { enabled: false },
             anonymizeNames: this.anonymizeNames,
             nameReveals: this.nameReveals,
             allowedPublicIds: this.whitelistEnabled
@@ -1432,7 +1500,6 @@ export class HostLobbyModal extends BaseModal {
   }
 
   private kickPlayer(clientID: string) {
-    // Dispatch event to be handled by WebSocket instead of HTTP
     this.dispatchEvent(
       new CustomEvent("kick-player", {
         detail: { target: clientID },
@@ -1458,36 +1525,5 @@ export class HostLobbyModal extends BaseModal {
       console.warn("Failed to load nation count", error);
       // Leave existing values unchanged so the UI stays consistent
     }
-  }
-}
-
-async function createLobby(): Promise<GameInfo> {
-  // Send JWT token for creator identification - server extracts persistentID from it
-  // persistentID should never be exposed to other clients
-  const token = await getPlayToken();
-  try {
-    // No worker prefix and no id: nginx (prod) / the vite dev proxy randomly
-    // routes to a worker, which mints a self-owned id and returns it.
-    const response = await fetch(`/api/create_game`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Server error response:", errorText);
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log("Success:", data);
-
-    return data as GameInfo;
-  } catch (error) {
-    console.error("Error creating lobby:", error);
-    throw error;
   }
 }

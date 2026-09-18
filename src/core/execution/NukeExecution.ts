@@ -1,6 +1,8 @@
+import { atan2 } from "../DetMath";
 import {
   Execution,
   Game,
+  isUnit,
   MessageType,
   Player,
   Structures,
@@ -39,11 +41,10 @@ export class NukeExecution implements Execution {
   init(mg: Game, ticks: number): void {
     this.mg = mg;
     if (this.speed === -1) {
-      this.speed = this.mg.config().defaultNukeSpeed();
+      this.speed = this.mg.config().nukeSpeed(this.nukeType);
     }
     this.pathFinder = UniversalPathFinding.Parabola(mg, {
       increment: this.speed,
-      distanceBasedHeight: this.nukeType !== UnitType.MIRVWarhead,
       directionUp: this.rocketDirectionUp,
     });
   }
@@ -99,7 +100,7 @@ export class NukeExecution implements Execution {
           const d2 = dx * dx + dy * dy;
           if (d2 > outer2) continue;
           if (d2 > inner2) {
-            const angle = Math.atan2(dy, dx) + Math.PI; // [0, 2π]
+            const angle = atan2(dy, dx) + Math.PI; // [0, 2π]
             const t = (angle / (2 * Math.PI)) * NUM_SAMPLES;
             const i0 = Math.floor(t) % NUM_SAMPLES;
             const i1 = (i0 + 1) % NUM_SAMPLES;
@@ -189,22 +190,30 @@ export class NukeExecution implements Execution {
         this.active = false;
         return;
       }
-      this.src = spawn;
-      // Nuke trajectories cannot pass over impassable terrain, just as they
-      // cannot exceed the map border. Check the full parabola path before
-      // launching; if any tile is impassable, abort the launch.
-      const path = this.pathFinder.findPath(spawn, this.dst) ?? [];
-      for (const tile of path) {
-        if (this.mg.isImpassable(tile)) {
-          console.warn(`nuke trajectory crosses impassable terrain`);
-          this.active = false;
-          return;
+      // The launch tile can be overridden by the caller (e.g. MIRV warheads
+      // launch from the MIRV separation point, not a silo).
+      this.src ??= spawn;
+      const silo = this.player
+        .units(UnitType.MissileSilo)
+        .find((silo) => silo.tile() === spawn);
+      // Stacked purchases launch several nukes across ticks; delay each missile
+      // so launches from the same silo trail each other instead of overlapping,
+      // need to check the entire queue because even if nukes have waitticks,
+      // the silo queue will be filled with the same tick.
+      if (silo !== undefined) {
+        let lastDep = 0;
+        for (const launchTick of silo.missileTimerQueue()) {
+          lastDep = Math.max(launchTick + 1, lastDep + 1);
+        }
+        if (lastDep > this.mg.ticks()) {
+          this.waitTicks += lastDep - this.mg.ticks();
         }
       }
-      this.nuke = this.player.buildUnit(this.nukeType, spawn, {
+      this.nuke = this.player.buildUnit(this.nukeType, this.src, {
         targetTile: this.dst,
         trajectory: this.getTrajectory(this.dst),
       });
+      this.nuke.updateNukeState({ waitTicks: this.waitTicks });
       this.recordMotionPlan(ticks);
       if (this.nuke.type() !== UnitType.MIRVWarhead) {
         this.maybeBreakAlliances();
@@ -236,9 +245,6 @@ export class NukeExecution implements Execution {
       }
 
       // after sending a nuke set the missilesilo on cooldown
-      const silo = this.player
-        .units(UnitType.MissileSilo)
-        .find((silo) => silo.tile() === spawn);
       if (silo) {
         silo.launch();
       }
@@ -252,15 +258,32 @@ export class NukeExecution implements Execution {
     }
 
     if (this.waitTicks > 0) {
-      this.waitTicks--;
+      this.nuke.updateNukeState({ waitTicks: --this.waitTicks });
       return;
     }
 
     // Move to next tile
     const result = this.pathFinder.next(this.src!, this.dst, this.speed);
+
     if (result.status === PathStatus.COMPLETE) {
-      this.detonate();
-      return;
+      // move it afterward for visual effect
+      this.nuke.move(result.node);
+
+      // Check for very close SAM missiles that are targeting this.
+      // The SAM logic should be the main source of truth, since missiles can skip pixels
+      // and be affected by execution order
+      const shouldBeDestroyed =
+        this.mg.nearbyUnits(
+          this.dst,
+          this.mg.config().defaultSamMissileSpeed(),
+          UnitType.SAMMissile,
+          ({ unit }) => {
+            if (!isUnit(unit) || unit.owner() === this.nuke?.owner())
+              return false;
+            return unit.targetUnit()?.id() === this.nuke?.id();
+          },
+        ).length >= 1;
+      if (!shouldBeDestroyed) this.detonate();
     } else if (result.status === PathStatus.NEXT) {
       this.updateNukeTargetable();
       this.nuke.move(result.node);
@@ -286,7 +309,6 @@ export class NukeExecution implements Execution {
     }
     const pathFinder = UniversalPathFinding.Parabola(this.mg, {
       increment: this.speed,
-      distanceBasedHeight: this.nukeType !== UnitType.MIRVWarhead,
       directionUp: this.rocketDirectionUp,
     });
     const path: TileRef[] = [this.src];
@@ -369,6 +391,9 @@ export class NukeExecution implements Execution {
       if (mg.isLand(tile)) {
         mg.queueWaterConversion(tile);
       }
+
+      // Record every tile in the blast radius for nukeable layer destruction.
+      mg.queueNukeImpact(tile);
     }
 
     // Then compute the explosion effect on each player
@@ -421,7 +446,6 @@ export class NukeExecution implements Execution {
 
     const outer2 = magnitude.outer * magnitude.outer;
     const dst = this.dst;
-    const destroyer = this.player;
     for (const unit of mg.units()) {
       const type = unit.type();
       if (
@@ -434,7 +458,10 @@ export class NukeExecution implements Execution {
         continue;
       }
       if (mg.euclideanDistSquared(dst, unit.tile()) < outer2) {
-        unit.delete(true, destroyer);
+        // treatAFKFriendly matches warship targeting: a disconnected
+        // teammate's or ally's units are still not kills.
+        const friendly = this.player.isFriendly(unit.owner(), true);
+        unit.delete(true, friendly ? undefined : this.player);
       }
     }
 
@@ -480,6 +507,13 @@ export class NukeExecution implements Execution {
           unit.touch();
         }
       }
+    }
+  }
+
+  cancel(): void {
+    this.active = false;
+    if (this.nuke !== null && this.nuke.isActive()) {
+      this.nuke.delete(false);
     }
   }
 

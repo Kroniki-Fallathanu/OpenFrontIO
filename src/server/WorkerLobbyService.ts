@@ -1,11 +1,13 @@
 import http from "http";
 import { WebSocket, WebSocketServer } from "ws";
+import { CloseCode, CloseReason } from "../core/CloseCodes";
 import {
   GameConfig,
   PublicGameInfo,
   PublicGames,
   PublicLobbyMessage,
 } from "../core/Schemas";
+import { encodeLobbyMessage } from "../core/ZbinWire";
 import { GameManager } from "./GameManager";
 import {
   InternalGameInfo,
@@ -15,6 +17,7 @@ import {
   WorkerReady,
 } from "./IPCBridgeSchema";
 import { logger } from "./Logger";
+import { ServerEnv } from "./ServerEnv";
 
 // The game config advertised for a listed private lobby: everything the
 // host configured minus host-only fields. The server already rejects
@@ -42,6 +45,12 @@ export class WorkerLobbyService {
   // counts-only delta is enough. Null (not "") is used so that an
   // empty-lobby first broadcast still emits a full.
   private lastFullGameIds: string | null = null;
+  // Deployment-active flag from the master's broadcast (see
+  // MasterLobbiesBroadcastSchema.active). Stamped onto every full snapshot so
+  // pinned tabs on a draining deployment get told to reload, and read by the
+  // ranked check-in loop so a draining server stops offering matches too
+  // (RankedCheckin.ts, OPE-469).
+  private deploymentActive = true;
 
   constructor(
     private readonly server: http.Server,
@@ -56,6 +65,15 @@ export class WorkerLobbyService {
     this.setupUpgradeHandler();
     this.setupLobbiesWebSocket();
     this.setupIPCListener();
+  }
+
+  /**
+   * Whether the master last said this deployment may take new games. True
+   * until the first broadcast arrives, so a worker that has not yet heard
+   * from its master behaves as it always has.
+   */
+  isDeploymentActive(): boolean {
+    return this.deploymentActive;
   }
 
   private setupIPCListener() {
@@ -83,6 +101,13 @@ export class WorkerLobbyService {
             game.setListed(false);
             this.log.info(`delisted by master: duplicate creator`, { gameID });
           }
+        }
+        // Flag flips force a full broadcast (by busting the fingerprint):
+        // already-connected clients must hear about a drain promptly, not at
+        // the next structural lobby change.
+        if ((msg.active ?? true) !== this.deploymentActive) {
+          this.deploymentActive = msg.active ?? true;
+          this.lastFullGameIds = null;
         }
         this.lastPublicGames = msg.publicGames;
         // Forward message to all clients
@@ -131,17 +156,22 @@ export class WorkerLobbyService {
   }
 
   private sendMyLobbiesToMaster() {
+    // Matchmaking games have a Public gameType (so they appear in
+    // publicLobbies()) but no publicGameType: they are invite-only and must
+    // never be advertised, and the master rejects entries without one.
     const publicLobbies = this.gm
       .publicLobbies()
-      .map((g) => g.gameInfo())
-      .map((gi) => {
+      .map((g) => ({ game: g, info: g.gameInfo() }))
+      .filter(({ info }) => info.publicGameType !== undefined)
+      .map(({ game, info }) => {
         return {
-          gameID: gi.gameID,
-          numClients: gi.clients?.length ?? 0,
-          startsAt: gi.startsAt,
-          gameConfig: gi.gameConfig,
-          publicGameType: gi.publicGameType!,
-        } satisfies PublicGameInfo;
+          gameID: info.gameID,
+          numClients: info.clients?.length ?? 0,
+          startsAt: info.startsAt,
+          gameConfig: info.gameConfig,
+          publicGameType: info.publicGameType!,
+          createdAt: game.createdAt,
+        } satisfies InternalGameInfo;
       });
     // Subscriber-listed private lobbies. creatorID (a hash of the creator's
     // persistentID) rides along for the one-listed-lobby-per-creator check;
@@ -156,11 +186,18 @@ export class WorkerLobbyService {
         gameConfig: gi.gameConfig && publicLobbyGameConfig(gi.gameConfig),
         publicGameType: "hosted",
         creatorID: g.hashedCreatorID(),
+        createdAt: g.createdAt,
+        // Already sanitised on the way in (GameServer.setFeatured), so nothing
+        // unsanitised can reach a browser even if another producer appears.
+        label: g.lobbyLabel(),
+        accent: g.lobbyAccent(),
+        featured: g.isFeatured() ? true : undefined,
       } satisfies InternalGameInfo;
     });
     this.sendToMaster({
       type: "lobbyList",
       lobbies: [...publicLobbies, ...hostedLobbies],
+      liveGames: this.gm.activeGames(),
     } satisfies WorkerLobbyList);
   }
 
@@ -208,7 +245,8 @@ export class WorkerLobbyService {
     return broadcast.length + localExtra;
   }
 
-  // Strips worker/master-internal fields (creatorID) before lobby info is
+  // Strips worker/master-internal fields (creatorID, createdAt) before lobby
+  // info is
   // sent to browser clients, converting InternalGameInfo to the
   // browser-facing PublicGameInfo.
   private sanitizeGames(
@@ -220,7 +258,11 @@ export class WorkerLobbyService {
       InternalGameInfo[],
     ][]) {
       sanitized[type] = list.map(
-        ({ creatorID: _creatorID, ...rest }): PublicGameInfo => rest,
+        ({
+          creatorID: _creatorID,
+          createdAt: _createdAt,
+          ...rest
+        }): PublicGameInfo => rest,
       );
     }
     return sanitized;
@@ -248,12 +290,15 @@ export class WorkerLobbyService {
       // would only see counts-only deltas (which it can't apply without a
       // base) until the next structural change.
       if (this.lastPublicGames !== null) {
-        const fullJson = JSON.stringify({
-          type: "full",
-          serverTime: this.lastPublicGames.serverTime,
-          games: this.sanitizeGames(this.lastPublicGames.games),
-        } satisfies PublicLobbyMessage);
-        ws.send(fullJson);
+        ws.send(
+          encodeLobbyMessage({
+            type: "full",
+            serverTime: this.lastPublicGames.serverTime,
+            games: this.sanitizeGames(this.lastPublicGames.games),
+            gitCommit: ServerEnv.gitCommit(),
+            active: this.deploymentActive,
+          } satisfies PublicLobbyMessage),
+        );
       }
       ws.on("message", () => {
         ws.terminate();
@@ -270,7 +315,7 @@ export class WorkerLobbyService {
             ws.readyState === WebSocket.OPEN ||
             ws.readyState === WebSocket.CONNECTING
           ) {
-            ws.close(1011, "WebSocket internal error");
+            ws.close(CloseCode.InternalError, CloseReason.InternalError);
           }
         } catch (closeError) {
           this.log.error("Error closing lobbies WebSocket:", closeError);
@@ -303,6 +348,8 @@ export class WorkerLobbyService {
         type: "full",
         serverTime: publicGames.serverTime,
         games: sanitizedGames,
+        gitCommit: ServerEnv.gitCommit(),
+        active: this.deploymentActive,
       };
       this.lastFullGameIds = fingerprint;
     } else {
@@ -318,12 +365,12 @@ export class WorkerLobbyService {
         counts,
       };
     }
-    const json = JSON.stringify(payload);
+    const frame = encodeLobbyMessage(payload);
 
     const clientsToRemove: WebSocket[] = [];
     this.lobbyClients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
-        client.send(json);
+        client.send(frame);
       } else {
         clientsToRemove.push(client);
       }

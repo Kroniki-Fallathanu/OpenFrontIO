@@ -122,12 +122,11 @@
     "#e6b450",
     "#c8a06e",
     "#be9682",
-    "#beb4a0",
     "#b4aa8c",
     "#c8c88c",
     "#beaa64"
   ],
-  "botColors": [
+  "classicBotColors": [
     "#96a08c",
     "#a0a096",
     "#aaaa8c",

@@ -29,7 +29,12 @@ export class HeadsUpMessage extends LitElement implements Controller {
   private isCatchingUp = false;
   private catchingUpTicks = 0;
 
+  @state()
+  private isOvertimeNotice = false;
+
   private static readonly CATCHING_UP_SHOW_THRESHOLD = 10;
+  // How long the overtime announcement banner stays up after the start minute.
+  private static readonly OVERTIME_NOTICE_SECONDS = 5;
 
   @state()
   private toastMessage: string | import("lit").TemplateResult | null = null;
@@ -116,11 +121,25 @@ export class HeadsUpMessage extends LitElement implements Controller {
     this.isCatchingUp =
       this.catchingUpTicks >= HeadsUpMessage.CATCHING_UP_SHOW_THRESHOLD;
 
+    // Announce overtime in this banner (not the toast, which is a brief
+    // notification slot). Window-based rather than a fired-once flag, so a
+    // late joiner or replay seek doesn't get a stale announcement long after
+    // the start minute.
+    const overtime = this.game.config().overtimeConfig();
+    const overtimeStart = overtime.startMinutes * 60;
+    const elapsed = this.game.elapsedGameSeconds();
+    this.isOvertimeNotice =
+      overtime.enabled &&
+      !this.game.inSpawnPhase() &&
+      elapsed >= overtimeStart &&
+      elapsed < overtimeStart + HeadsUpMessage.OVERTIME_NOTICE_SECONDS;
+
     this.isVisible =
       this.game.inSpawnPhase() ||
       this.isPaused ||
       this.isImmunityActive ||
-      this.isCatchingUp;
+      this.isCatchingUp ||
+      this.isOvertimeNotice;
     this.requestUpdate();
   }
 
@@ -140,6 +159,17 @@ export class HeadsUpMessage extends LitElement implements Controller {
         seconds: Math.round(this.game.config().spawnImmunityDuration() / 10),
       });
     }
+    if (this.isOvertimeNotice) {
+      return translateText("overtime.started");
+    }
+    if (
+      this.game.config().isReplay() ||
+      this.game.config().isIntentionalSpectator()
+    ) {
+      return this.game.config().isRandomSpawn()
+        ? translateText("heads_up_message.random_spawn_spectator")
+        : translateText("heads_up_message.choose_spawn_spectator");
+    }
     return this.game.config().isRandomSpawn()
       ? translateText("heads_up_message.random_spawn")
       : translateText("heads_up_message.choose_spawn");
@@ -157,7 +187,7 @@ export class HeadsUpMessage extends LitElement implements Controller {
         ${this.toastMessage
           ? html`
               <div
-                class="fixed top-6 left-1/2 -translate-x-1/2 z-[800] px-6 py-4 rounded-xl transition-all duration-300 animate-fade-in-out"
+                class="fixed top-6 left-1/2 -translate-x-1/2 z-[1002] px-6 py-4 rounded-xl transition-all duration-300 animate-fade-in-out"
                 style="max-width: 90vw; min-width: 200px; text-align: center;
                   background: ${this.toastColor === "red"
                   ? "rgba(239,68,68,0.1)"
@@ -196,6 +226,7 @@ export class HeadsUpMessage extends LitElement implements Controller {
           : null}
         ${this.game?.inSpawnPhase() &&
         !this.game.config().isReplay() &&
+        !this.game.config().isIntentionalSpectator() &&
         this.game.config().gameConfig().rankedType !== RankedType.OneVOne &&
         this.game.config().gameConfig().gameMode === GameMode.FFA &&
         this.game.config().gameConfig().gameType === GameType.Public &&

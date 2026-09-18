@@ -41,6 +41,7 @@ import {
   buildGlyphMetricsTex,
   buildPlayerDataTex,
   buildStringTex,
+  PLAYER_DATA_COLS,
 } from "./DataTextures";
 import { DebugProgram } from "./DebugProgram";
 import { FlagAtlasArray } from "./FlagAtlasArray";
@@ -53,6 +54,14 @@ import { LINES_PER_PLAYER, MAX_CHARS } from "./Types";
 
 // Flag quad aspect ratio — must match FLAG_CELL_W / FLAG_CELL_H in FlagAtlasArray.ts.
 const FLAG_ASPECT = 128 / 85;
+
+// Crown cosmetics use square cells (must match the crownAtlas cell size below).
+export const CROWN_CELL = 128;
+
+// Initial unique-crown capacity. Crowns are a rare cosmetic, so start small
+// (32 × 128×128 RGBA8 + mips ≈ 2.8 MB vs ~43 MB at the 512 flag default);
+// the atlas doubles itself if a game exceeds it.
+const CROWN_INITIAL_LAYERS = 32;
 
 export class NamePass {
   private gl: WebGL2RenderingContext;
@@ -85,9 +94,12 @@ export class NamePass {
   private maxPlayers: number;
   private playerColors: Map<string, [number, number, number]> = new Map();
   private flagAtlas: FlagAtlasArray;
+  private crownAtlas: FlagAtlasArray;
   private emojiCharToIndex: Map<string, number>;
   /** Slots waiting on a flag URL → set of slots that want that URL's layer. */
   private slotsWaitingForFlag = new Map<string, Set<PlayerSlot>>();
+  /** Slots waiting on a crown URL → set of slots that want that URL's layer. */
+  private slotsWaitingForCrown = new Map<string, Set<PlayerSlot>>();
 
   // CPU-side mirrors — batched upload in draw()
   private cpuPlayerData: Float32Array;
@@ -144,6 +156,26 @@ export class NamePass {
       }
     });
 
+    // Crown cosmetics share the flag-atlas mechanism but use their own array
+    // (square cells so crown quads carry no letterbox margins). The crown
+    // image skins the first-place status crown (StatusIconProgram slot 0).
+    this.crownAtlas = new FlagAtlasArray(
+      gl,
+      (url, layer) => {
+        const waiting = this.slotsWaitingForCrown.get(url);
+        if (!waiting) return;
+        this.slotsWaitingForCrown.delete(url);
+        for (const slot of waiting) {
+          if (slot.crownUrl !== url) continue;
+          slot.crownLayerIdx = layer;
+          this.writePlayerDataRow(slot);
+        }
+      },
+      CROWN_CELL,
+      CROWN_CELL,
+      CROWN_INITIAL_LAYERS,
+    );
+
     // Build player lookups and extract territory colors from palette
     this.playerByID = new Map();
     for (const p of header.players) {
@@ -158,7 +190,9 @@ export class NamePass {
 
     // CPU-side texture mirrors + reusable layout buffers
     const textRows = this.maxPlayers * LINES_PER_PLAYER;
-    this.cpuPlayerData = new Float32Array(8 * this.maxPlayers * 4);
+    this.cpuPlayerData = new Float32Array(
+      PLAYER_DATA_COLS * this.maxPlayers * 4,
+    );
     this.cpuStringData = new Uint8Array(MAX_CHARS * textRows);
     this.cpuCursorData = new Float32Array(MAX_CHARS * textRows);
     this.stringRow = new Uint8Array(MAX_CHARS);
@@ -191,6 +225,7 @@ export class NamePass {
       gl,
       atlas,
       this.playerDataTex,
+      this.crownAtlas,
       this.maxPlayers,
       config.allianceExtensionPromptOffset(),
     );
@@ -256,6 +291,33 @@ export class NamePass {
   }
 
   /**
+   * Swap known players' flag and crown images (e.g. after the cosmetics
+   * visibility settings change). slot.static is the playerByID entry, so a
+   * slot created later picks the new URLs up too.
+   */
+  updatePlayerCosmetics(players: PlayerStatic[]): void {
+    for (const p of players) {
+      const known = this.playerByID.get(p.id);
+      if (known === undefined) continue;
+      known.flag = p.flag;
+      known.crown = p.crown;
+      const slot = this.slots.get(p.id);
+      if (slot === undefined) continue;
+      if (slot.flagUrl !== p.flag) {
+        slot.flagUrl = p.flag;
+        slot.flagLayerIdx = -1;
+        this.resolveSlotFlag(slot);
+      }
+      if (slot.crownUrl !== p.crown) {
+        slot.crownUrl = p.crown;
+        slot.crownLayerIdx = -1;
+        this.resolveSlotCrown(slot);
+      }
+      this.writePlayerDataRow(slot);
+    }
+  }
+
+  /**
    * Request the texture layer for a slot's flag (called once at slot creation).
    * If the image is already loaded the layer index is set immediately; otherwise
    * the slot joins a wait list and is updated when the image arrives.
@@ -273,6 +335,24 @@ export class NamePass {
     if (!waiting) {
       waiting = new Set();
       this.slotsWaitingForFlag.set(url, waiting);
+    }
+    waiting.add(slot);
+  }
+
+  /** Same as resolveSlotFlag, for the slot's crown cosmetic. */
+  private resolveSlotCrown(slot: PlayerSlot): void {
+    const url = slot.crownUrl;
+    if (!url) return;
+    this.crownAtlas.request(url);
+    const layer = this.crownAtlas.getLayer(url);
+    if (layer >= 0) {
+      slot.crownLayerIdx = layer;
+      return;
+    }
+    let waiting = this.slotsWaitingForCrown.get(url);
+    if (!waiting) {
+      waiting = new Set();
+      this.slotsWaitingForCrown.set(url, waiting);
     }
     waiting.add(slot);
   }
@@ -314,6 +394,8 @@ export class NamePass {
             lastTroopBucket: -1,
             flagUrl: p.flag,
             flagLayerIdx: -1,
+            crownUrl: p.crown,
+            crownLayerIdx: -1,
             emojiAtlasIdx: -1,
             nameHalfWidth: 0,
             crown: false,
@@ -327,6 +409,7 @@ export class NamePass {
             nukeTargetsMe: false,
             inDoomsdayClock: false,
             doomsdayClockDraining: false,
+            doomsdayClockDecaying: false,
             doomsdayClockWarnProgress: 0,
             traitorRemainingTicks: 0,
             allianceFraction: 0,
@@ -334,6 +417,7 @@ export class NamePass {
           };
           this.slots.set(p.id, slot);
           this.resolveSlotFlag(slot);
+          this.resolveSlotCrown(slot);
         } else {
           nextSlotIndex = Math.max(
             nextSlotIndex,
@@ -460,6 +544,7 @@ export class NamePass {
       const disconnected = sd?.disconnected ?? false;
       const inDoomsdayClock = sd?.inDoomsdayClock ?? false;
       const doomsdayClockDraining = sd?.doomsdayClockDraining ?? false;
+      const doomsdayClockDecaying = sd?.doomsdayClockDecaying ?? false;
       const doomsdayClockWarnProgress = sd?.doomsdayClockWarnProgress ?? 0;
       const alliance = sd?.alliance ?? false;
       const allianceReq = sd?.allianceReq ?? false;
@@ -477,6 +562,7 @@ export class NamePass {
         disconnected !== slot.disconnected ||
         inDoomsdayClock !== slot.inDoomsdayClock ||
         doomsdayClockDraining !== slot.doomsdayClockDraining ||
+        doomsdayClockDecaying !== slot.doomsdayClockDecaying ||
         doomsdayClockWarnProgress !== slot.doomsdayClockWarnProgress ||
         alliance !== slot.alliance ||
         allianceReq !== slot.allianceReq ||
@@ -493,6 +579,7 @@ export class NamePass {
         slot.disconnected = disconnected;
         slot.inDoomsdayClock = inDoomsdayClock;
         slot.doomsdayClockDraining = doomsdayClockDraining;
+        slot.doomsdayClockDecaying = doomsdayClockDecaying;
         slot.doomsdayClockWarnProgress = doomsdayClockWarnProgress;
         slot.alliance = alliance;
         slot.allianceReq = allianceReq;
@@ -544,7 +631,7 @@ export class NamePass {
   /** Pack player data into the CPU buffer (flushed to GPU in draw). */
   private writePlayerDataRow(slot: PlayerSlot): void {
     const d = this.cpuPlayerData;
-    const off = slot.index * 32; // 8 columns × 4 floats per RGBA texel
+    const off = slot.index * (PLAYER_DATA_COLS * 4); // 4 floats per RGBA texel
 
     // Column 0: srcX, srcY, srcScale, startTime
     d[off + 0] = slot.srcX;
@@ -580,18 +667,21 @@ export class NamePass {
     d[off + 15] = slot.nameHalfWidth;
 
     // Column 4: flagLayerIdx, emojiAtlasIdx, smallID, doomsdayClock state
-    // (0 none, 1.0-1.49 danger -> blinking skull, 2 draining -> steady skull).
+    // (0 none, 1.0-1.49 danger -> blinking skull, 2 draining -> steady skull,
+    // 3 decaying -> steady RED skull, i.e. territory is rotting away).
     // The warn-countdown progress (0->1) is packed into the danger value's
     // fraction so the shader can blink faster as drain nears; it stays < 1.5 so
     // the draining threshold is untouched.
     d[off + 16] = slot.flagLayerIdx;
     d[off + 17] = slot.emojiAtlasIdx;
     d[off + 18] = slot.static.smallID;
-    d[off + 19] = slot.doomsdayClockDraining
-      ? 2.0
-      : slot.inDoomsdayClock
-        ? 1.0 + slot.doomsdayClockWarnProgress * 0.49
-        : 0.0;
+    d[off + 19] = slot.doomsdayClockDecaying
+      ? 3.0
+      : slot.doomsdayClockDraining
+        ? 2.0
+        : slot.inDoomsdayClock
+          ? 1.0 + slot.doomsdayClockWarnProgress * 0.49
+          : 0.0;
 
     // Column 5: crown, traitor, disconnected, alliance
     d[off + 20] = slot.crown ? 1.0 : 0.0;
@@ -610,6 +700,23 @@ export class NamePass {
     d[off + 29] = slot.traitorRemainingTicks;
     d[off + 30] = slot.allianceFraction;
     d[off + 31] = slot.allianceRemainingTicks;
+
+    // Column 8: crownLayerIdx (crown cosmetic), verified badge, statusIconCount, free
+    d[off + 32] = slot.crownLayerIdx;
+    d[off + 33] = slot.static.verified === true ? 1.0 : 0.0;
+    // Count of active status-row icons so shaders don't recompute it independently.
+    d[off + 34] = [
+      slot.crown,
+      slot.traitor,
+      slot.disconnected,
+      slot.alliance,
+      slot.allianceReq,
+      slot.target,
+      slot.embargo,
+      slot.nukeActive,
+      slot.inDoomsdayClock || slot.doomsdayClockDraining,
+    ].filter(Boolean).length;
+    d[off + 35] = 0.0;
 
     this.playerDataDirty = true;
   }
@@ -724,7 +831,7 @@ export class NamePass {
         0,
         0,
         0,
-        8,
+        PLAYER_DATA_COLS,
         this.maxPlayers,
         gl.RGBA,
         gl.FLOAT,
@@ -766,6 +873,7 @@ export class NamePass {
     this.textProgram.dispose();
     this.iconProgram.dispose();
     this.flagAtlas.dispose();
+    this.crownAtlas.dispose();
     this.statusIconProgram.dispose();
     this.debugProgram.dispose();
     gl.deleteTexture(this.glyphMetricsTex);

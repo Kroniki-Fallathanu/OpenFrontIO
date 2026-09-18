@@ -21,11 +21,11 @@ import {
  * apply line in applyStateUpdate below. A field missing here is never diffed,
  * so its changes silently never reach the main thread after the first update.
  *
- * EXCEPTION: tilesOwned / gold / troops are deliberately NOT diffed here.
- * They change for nearly every alive player every tick, so they travel on
- * the transferable `GameUpdateViewData.packedPlayerUpdates` channel instead
- * (see PlayerImpl.toUpdate) and appear in PlayerUpdate objects only on a
- * player's first (full) emission.
+ * EXCEPTION: tilesOwned / gold / troops / goldEarned are deliberately NOT
+ * diffed here. They change for nearly every alive player every tick, so they
+ * travel on the transferable `GameUpdateViewData.packedPlayerUpdates` channel
+ * instead (see PlayerImpl.toUpdate) and appear in PlayerUpdate objects only on
+ * a player's first (full) emission.
  */
 export function diffPlayerUpdate(
   prev: PlayerUpdate,
@@ -39,15 +39,23 @@ export function diffPlayerUpdate(
     prev.clientID === next.clientID &&
     prev.name === next.name &&
     prev.displayName === next.displayName &&
+    prev.clanTag === next.clanTag &&
+    prev.nationFlag === next.nationFlag &&
     prev.team === next.team &&
     prev.smallID === next.smallID &&
     prev.playerType === next.playerType &&
     prev.isAlive === next.isAlive &&
     prev.isDisconnected === next.isDisconnected &&
+    prev.killedBy === next.killedBy &&
+    prev.deathPosition === next.deathPosition &&
+    prev.tradeGold === next.tradeGold &&
+    prev.trainGold === next.trainGold &&
+    prev.piracyGold === next.piracyGold &&
     prev.isTraitor === next.isTraitor &&
     prev.traitorRemainingTicks === next.traitorRemainingTicks &&
     prev.inDoomsdayClock === next.inDoomsdayClock &&
     prev.markedDoomsdayClockTick === next.markedDoomsdayClockTick &&
+    prev.isDecaying === next.isDecaying &&
     prev.hasSpawned === next.hasSpawned &&
     prev.spawnTile === next.spawnTile &&
     prev.betrayals === next.betrayals &&
@@ -84,12 +92,20 @@ export function diffPlayerUpdate(
   setIfDifferent("clientID", prev.clientID === next.clientID);
   setIfDifferent("name", prev.name === next.name);
   setIfDifferent("displayName", prev.displayName === next.displayName);
+  setIfDifferent("clanTag", prev.clanTag === next.clanTag);
+  setIfDifferent("nationFlag", prev.nationFlag === next.nationFlag);
   setIfDifferent("team", prev.team === next.team);
   setIfDifferent("smallID", prev.smallID === next.smallID);
   setIfDifferent("playerType", prev.playerType === next.playerType);
   setIfDifferent("isAlive", prev.isAlive === next.isAlive);
   setIfDifferent("isDisconnected", prev.isDisconnected === next.isDisconnected);
-  // tilesOwned / gold / troops intentionally absent — see EXCEPTION above.
+  setIfDifferent("killedBy", prev.killedBy === next.killedBy);
+  setIfDifferent("deathPosition", prev.deathPosition === next.deathPosition);
+  setIfDifferent("tradeGold", prev.tradeGold === next.tradeGold);
+  setIfDifferent("trainGold", prev.trainGold === next.trainGold);
+  setIfDifferent("piracyGold", prev.piracyGold === next.piracyGold);
+  // tilesOwned / gold / troops / goldEarned intentionally absent — see
+  // EXCEPTION above (goldEarned churns every tick via worker income).
   setIfDifferent("isTraitor", prev.isTraitor === next.isTraitor);
   setIfDifferent(
     "traitorRemainingTicks",
@@ -103,6 +119,7 @@ export function diffPlayerUpdate(
     "markedDoomsdayClockTick",
     prev.markedDoomsdayClockTick === next.markedDoomsdayClockTick,
   );
+  setIfDifferent("isDecaying", prev.isDecaying === next.isDecaying);
   setIfDifferent("hasSpawned", prev.hasSpawned === next.hasSpawned);
   setIfDifferent("spawnTile", prev.spawnTile === next.spawnTile);
   setIfDifferent("betrayals", prev.betrayals === next.betrayals);
@@ -157,8 +174,14 @@ export function applyStateUpdate(target: PlayerState, pu: PlayerUpdate): void {
   if (pu.isAlive !== undefined) target.isAlive = pu.isAlive;
   if (pu.isDisconnected !== undefined)
     target.isDisconnected = pu.isDisconnected;
+  if (pu.killedBy !== undefined) target.killedBy = pu.killedBy;
+  if (pu.deathPosition !== undefined) target.deathPosition = pu.deathPosition;
   if (pu.tilesOwned !== undefined) target.tilesOwned = pu.tilesOwned;
   if (pu.gold !== undefined) target.gold = Number(pu.gold);
+  if (pu.tradeGold !== undefined) target.tradeGold = Number(pu.tradeGold);
+  if (pu.trainGold !== undefined) target.trainGold = Number(pu.trainGold);
+  if (pu.piracyGold !== undefined) target.piracyGold = Number(pu.piracyGold);
+  if (pu.goldEarned !== undefined) target.goldEarned = Number(pu.goldEarned);
   if (pu.troops !== undefined) target.troops = pu.troops;
   if (pu.isTraitor !== undefined) target.isTraitor = pu.isTraitor;
   if (pu.traitorRemainingTicks !== undefined) {
@@ -169,6 +192,7 @@ export function applyStateUpdate(target: PlayerState, pu: PlayerUpdate): void {
   if (pu.markedDoomsdayClockTick !== undefined) {
     target.markedDoomsdayClockTick = pu.markedDoomsdayClockTick;
   }
+  if (pu.isDecaying !== undefined) target.isDecaying = pu.isDecaying;
   if (pu.betrayals !== undefined) target.betrayals = pu.betrayals;
   if (pu.hasSpawned !== undefined) target.hasSpawned = pu.hasSpawned;
   if (pu.spawnTile !== undefined) target.spawnTile = pu.spawnTile;

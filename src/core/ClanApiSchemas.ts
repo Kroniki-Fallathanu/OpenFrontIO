@@ -42,6 +42,14 @@ export const ClanInfoSchema = z.object({
   isOpen: z.boolean(),
   createdAt: z.iso.datetime().optional(),
   memberCount: z.number().optional(),
+  // Clan currency, public info (no membership gate). Decimal bigint strings
+  // ("0" when empty, never a number) — they are int64 server-side and can
+  // exceed Number.MAX_SAFE_INTEGER, so compare and sum with BigInt, never
+  // Number. Optional because not every ClanInfo source carries them (the PATCH
+  // response, an API deploy predating the field) — absent means "unknown",
+  // which the UI hides rather than rendering as zero.
+  softBalance: z.string().optional(),
+  hardBalance: z.string().optional(),
 });
 export type ClanInfo = z.infer<typeof ClanInfoSchema>;
 
@@ -128,6 +136,10 @@ export const ClanMemberSchema = z.object({
   role: z.enum(["leader", "officer", "member"]),
   joinedAt: z.iso.datetime(),
   publicId: z.string(),
+  // Account username, pre-rendered by the server (null = never set). Render
+  // `username ?? publicId`; identify players by publicId only. Optional so
+  // responses from an API without the field still parse.
+  username: z.string().nullable().optional(),
   stats: ClanMemberStatsSchema.optional(),
 });
 export type ClanMember = z.infer<typeof ClanMemberSchema>;
@@ -143,6 +155,8 @@ export type ClanMembersResponse = z.infer<typeof ClanMembersResponseSchema>;
 
 export const ClanJoinRequestSchema = z.object({
   publicId: z.string(),
+  // Requester's account username (null = never set).
+  username: z.string().nullable().optional(),
   createdAt: z.iso.datetime(),
 });
 export type ClanJoinRequest = z.infer<typeof ClanJoinRequestSchema>;
@@ -157,7 +171,11 @@ export type ClanRequestsResponse = z.infer<typeof ClanRequestsResponseSchema>;
 
 export const ClanBanSchema = z.object({
   publicId: z.string(),
+  // Banned player's account username (null = never set).
+  username: z.string().nullable().optional(),
   bannedBy: z.string(),
+  // Account username of the officer who issued the ban.
+  bannedByUsername: z.string().nullable().optional(),
   reason: z.string().max(200).nullable(),
   createdAt: z.iso.datetime(),
 });
@@ -178,7 +196,13 @@ export type JoinClanResponse = z.infer<typeof JoinClanResponseSchema>;
 
 export const ClanGamePlayerSchema = z.object({
   publicId: z.string(),
+  // The name the player actually used in that game (the in-lobby name). This
+  // is what the history displays.
   username: z.string(),
+  // Whether the player joined that game under their verified account name
+  // (recorded per session at ingest, server-validated at join). Drives the
+  // verified check. Optional so older API responses still parse (→ no badge).
+  verified: z.boolean().optional(),
   won: z.boolean(),
 });
 export type ClanGamePlayer = z.infer<typeof ClanGamePlayerSchema>;
@@ -198,7 +222,7 @@ export const ClanGameSchema = z.object({
   gameId: z.string(),
   start: z.iso.datetime(),
   durationSeconds: z.number().int().nonnegative(),
-  map: z.string().optional(),
+  map: z.string().trim().optional(),
   mode: z.string().optional(),
   // playerTeams is `null` (not absent) for FFA / non-team games — use
   // `.nullish()` so the wire `null` doesn't fail the parse.
@@ -221,3 +245,33 @@ export const ClanGamesResponseSchema = z.object({
   nextCursor: z.string().nullable(),
 });
 export type ClanGamesResponse = z.infer<typeof ClanGamesResponseSchema>;
+
+// One row of a clan's donation ledger (GET /clans/:tag/donations). Only player
+// donations are listed — the clan's win-share cut, admin adjustments and refund
+// reversals are separate ledger reasons the endpoint excludes — so summing
+// `amount` is not the clan balance; use ClanInfo.softBalance/hardBalance.
+export const ClanDonationSchema = z.object({
+  // Ledger row id, a bigint serialized as a decimal string.
+  id: z.string(),
+  currencyType: z.enum(["soft", "hard"]),
+  // Positive integer as a decimal bigint string; parse with BigInt, never
+  // Number (same reasoning as ClanInfoSchema's balances).
+  amount: z.string(),
+  reason: z.string(),
+  note: z.string().nullable().optional(),
+  // Donor's public ID; null when the account has since been deleted.
+  createdBy: z.string().nullable(),
+  // Donor's display username; null when deleted or never set.
+  createdByUsername: z.string().nullable().optional(),
+  createdAt: z.iso.datetime(),
+});
+export type ClanDonation = z.infer<typeof ClanDonationSchema>;
+
+export const ClanDonationsResponseSchema = z.object({
+  results: ClanDonationSchema.array(),
+  // Donations matching the currency filter, not just this page.
+  total: z.number(),
+  page: z.number(),
+  limit: z.number(),
+});
+export type ClanDonationsResponse = z.infer<typeof ClanDonationsResponseSchema>;

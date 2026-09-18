@@ -5,8 +5,10 @@ import {
   Gold,
   MessageType,
   NameViewData,
+  NukeState,
   PlayerID,
   PlayerType,
+  SamLauncherState,
   Team,
   Tick,
   TrainType,
@@ -34,8 +36,9 @@ export interface GameUpdateViewData {
    */
   packedMotionPlans?: Uint32Array;
   /**
-   * Packed per-player numeric stats as `[smallID, tilesOwned, gold, troops]`
-   * float64 quads — the fields that change for nearly every alive player
+   * Packed per-player numeric stats as
+   * `[smallID, tilesOwned, gold, troops, goldEarned]`
+   * float64 quints — the fields that change for nearly every alive player
    * every tick. They travel here (transferred, not structured-cloned) instead
    * of in `PlayerUpdate` object diffs, which only carry them on a player's
    * first emission. Gold is exact in a float64 (game values stay far below
@@ -64,6 +67,12 @@ export interface GameUpdateViewData {
   playerNameViewData?: Record<string, NameViewData>;
   tickExecutionDuration?: number;
   pendingTurns?: number;
+  /**
+   * Packed tile refs that were inside a nuke blast radius this tick.
+   * Used by the renderer to mark nukeable layer tiles as destroyed.
+   * Absent when no nukes detonated.
+   */
+  packedNukeImpacts?: Uint32Array;
 }
 
 export interface ErrorUpdate {
@@ -181,6 +190,7 @@ export interface UnitUpdate {
   reachedTarget: boolean;
   warshipState?: WarshipState;
   transportShipState?: TransportShipState;
+  nukeState?: NukeState;
   targetable: boolean;
   markedForDeletion: number | false;
   targetUnitId?: number; // Only for trade ships
@@ -192,6 +202,7 @@ export interface UnitUpdate {
   hasTrainStation: boolean;
   trainType?: TrainType; // Only for trains
   loaded?: boolean; // Only for trains
+  samUpgrade?: SamLauncherState;
 }
 
 export interface AttackUpdate {
@@ -221,19 +232,32 @@ export interface PlayerUpdate {
   clientID?: ClientID | null;
   name?: string;
   displayName?: string;
+  clanTag?: string | null;
+  nationFlag?: string | null;
   team?: Team;
   smallID?: number;
   playerType?: PlayerType;
   isAlive?: boolean;
   isDisconnected?: boolean;
+  killedBy?: ClientID | null;
+  deathPosition?: number | null;
   tilesOwned?: number;
   gold?: Gold;
+  /** Cumulative ship-trade revenue (changes only on arrivals, so it diffs). */
+  tradeGold?: Gold;
+  /** Cumulative train revenue: own trains + external stops at own stations. */
+  trainGold?: Gold;
+  /** Cumulative piracy revenue: captured-ship payouts. */
+  piracyGold?: Gold;
+  /** Cumulative gold received from all sources (workers, trade, ...). */
+  goldEarned?: Gold;
   troops?: number;
   allies?: number[];
   embargoes?: Set<PlayerID>;
   isTraitor?: boolean;
   traitorRemainingTicks?: number;
   inDoomsdayClock?: boolean;
+  isDecaying?: boolean;
   markedDoomsdayClockTick?: number;
   targets?: number[];
   outgoingEmojis?: EmojiMessage[];

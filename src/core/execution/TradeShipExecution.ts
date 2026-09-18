@@ -34,7 +34,7 @@ export class TradeShipExecution implements Execution {
     this.mg = mg;
     const stagger =
       TradeShipExecution._staggerCounter++ % WaterPathFinder.STAGGER_SPREAD;
-    this.pathFinder = new WaterPathFinder(mg, stagger);
+    this.pathFinder = new WaterPathFinder(mg, stagger, true); // memoized: port tile to port tile repeats
   }
 
   tick(ticks: number): void {
@@ -76,6 +76,7 @@ export class TradeShipExecution implements Execution {
         undefined,
         { name: tradeShipOwner.displayName() },
         this.tradeShip.id(),
+        tradeShipOwner.id(),
       );
     }
 
@@ -138,10 +139,7 @@ export class TradeShipExecution implements Execution {
         if (dst !== this.motionPlanDst) {
           this.motionPlanId++;
           const from = result.node;
-          const path = this.pathFinder.findPath(from, dst) ?? [from];
-          if (path.length === 0 || path[0] !== from) {
-            path.unshift(from);
-          }
+          const path = this.pathFinder.pathForTraversal(from, dst);
 
           this.mg.recordMotionPlan({
             kind: "grid",
@@ -180,8 +178,12 @@ export class TradeShipExecution implements Execution {
       .config()
       .tradeShipGold(this.tilesTraveled, this.tradeShip!.owner());
 
-    if (this.wasCaptured) {
+    if (this.wasCaptured && this.tradeShip!.owner() === this.origOwner) {
+      // Retaken by its original owner: the payout stands, but nobody pirated it.
+      this.origOwner.addGold(gold, this._dstPort.tile());
+    } else if (this.wasCaptured) {
       this.tradeShip!.owner().addGold(gold, this._dstPort.tile());
+      this.tradeShip!.owner().addPiracyGold(gold);
       this.mg.displayMessage(
         "events_display.received_gold_from_captured_ship",
         MessageType.CAPTURED_ENEMY_UNIT,
@@ -191,6 +193,8 @@ export class TradeShipExecution implements Execution {
           gold: renderNumber(gold),
           name: this.origOwner.displayName(),
         },
+        undefined,
+        this.origOwner.id(),
       );
       // Record stats
       this.mg
@@ -199,6 +203,8 @@ export class TradeShipExecution implements Execution {
     } else {
       this.srcPort.owner().addGold(gold, this.srcPort.tile());
       this._dstPort.owner().addGold(gold, this._dstPort.tile());
+      this.srcPort.owner().addTradeGold(gold);
+      this._dstPort.owner().addTradeGold(gold);
       // Record stats
       this.mg
         .stats()

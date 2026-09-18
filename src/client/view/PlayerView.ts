@@ -30,6 +30,7 @@ import {
 import { UserSettings } from "../../core/game/UserSettings";
 import { PlayerState, PlayerStatic, PlayerTypeEnum } from "../render/types";
 import { themeProvider } from "../theme/ThemeProvider";
+import { type CosmeticOwner, visibleCosmetics } from "./CosmeticVisibility";
 import { GameView } from "./GameView";
 import { UnitView } from "./UnitView";
 
@@ -61,6 +62,7 @@ function staticFromUpdate(pu: PlayerUpdate): PlayerStatic {
     id: pu.id,
     name: pu.name!,
     displayName: pu.displayName!,
+    clanTag: pu.clanTag ?? null,
     clientID: pu.clientID ?? null,
     playerType: gamePlayerTypeToEnum(pu.playerType!),
     team: pu.team ?? null,
@@ -76,12 +78,19 @@ function stateFromUpdate(pu: PlayerUpdate): PlayerState {
     smallID: pu.smallID!,
     isAlive: pu.isAlive!,
     isDisconnected: pu.isDisconnected!,
+    killedBy: pu.killedBy ?? null,
+    deathPosition: pu.deathPosition ?? null,
     tilesOwned: pu.tilesOwned!,
     gold: Number(pu.gold!),
+    tradeGold: Number(pu.tradeGold ?? 0n),
+    trainGold: Number(pu.trainGold ?? 0n),
+    piracyGold: Number(pu.piracyGold ?? 0n),
+    goldEarned: Number(pu.goldEarned ?? 0n),
     troops: pu.troops!,
     isTraitor: pu.isTraitor!,
     traitorRemainingTicks: Math.max(0, pu.traitorRemainingTicks ?? 0),
     inDoomsdayClock: pu.inDoomsdayClock ?? false,
+    isDecaying: pu.isDecaying ?? false,
     markedDoomsdayClockTick: pu.markedDoomsdayClockTick ?? -1,
     betrayals: pu.betrayals!,
     hasSpawned: pu.hasSpawned!,
@@ -94,7 +103,9 @@ function stateFromUpdate(pu: PlayerUpdate): PlayerState {
     incomingAttacks: pu.incomingAttacks!,
     outgoingAllianceRequests: pu.outgoingAllianceRequests!.slice(),
     alliances: pu.alliances!,
-    outgoingEmojis: pu.outgoingEmojis!,
+    // Respect the client-side "Disable emojis" setting: when off, never surface
+    // emoji data to any renderer/overlay that reads this shared state (#4430).
+    outgoingEmojis: userSettings.emojis() ? pu.outgoingEmojis! : [],
   };
 }
 
@@ -106,6 +117,8 @@ export class PlayerView {
   public state: PlayerState;
   /** Static header data — set once at construction, never mutated. */
   public static: PlayerStatic;
+  /** The equipped cosmetics this client draws. */
+  public cosmetics!: PlayerCosmetics;
 
   // Assigned via computeColors() in the constructor; re-assignable on theme change.
   private _territoryColor!: Colord;
@@ -127,7 +140,8 @@ export class PlayerView {
     data: PlayerUpdate,
     // Undefined until the worker's first name placement for this player.
     public nameData: NameViewData | undefined,
-    public cosmetics: PlayerCosmetics,
+    /** Everything the player has equipped, before visibility settings. */
+    public readonly equippedCosmetics: PlayerCosmetics,
   ) {
     this.state = stateFromUpdate(data);
     this.static = staticFromUpdate(data);
@@ -139,15 +153,38 @@ export class PlayerView {
       this.anonymousName = createRandomName(data.name!, data.playerType!);
     }
 
+    this.refreshCosmetics();
+  }
+
+  /**
+   * Re-resolve which equipped cosmetics are drawn (see visibleCosmetics) and
+   * everything derived from them. Call when the cosmetics visibility settings
+   * or the local player's team change; the renderer must be refreshed after.
+   */
+  refreshCosmetics(): void {
+    this.cosmetics = visibleCosmetics(
+      this.equippedCosmetics,
+      this.game.cosmeticVisibility(),
+      this.cosmeticOwner(),
+    );
     this.computeColors();
 
-    const pattern = userSettings.territoryPatterns()
-      ? this.cosmetics.pattern
-      : undefined;
+    const pattern = this.cosmetics.pattern;
     this.decoder =
       pattern === undefined
         ? undefined
         : new PatternDecoder(pattern, base64url.decode);
+  }
+
+  private cosmeticOwner(): CosmeticOwner {
+    if (
+      this.static.clientID !== null &&
+      this.static.clientID === this.game.myClientID()
+    ) {
+      return "self";
+    }
+    const myTeam = this.game.myPlayer()?.team() ?? null;
+    return myTeam !== null && this.team() === myTeam ? "teammate" : "other";
   }
 
   /**
@@ -161,9 +198,7 @@ export class PlayerView {
     const defaultTerritoryColor = theme.territoryColor(this);
     const defaultBorderColor = theme.borderColor(defaultTerritoryColor);
 
-    const pattern = userSettings.territoryPatterns()
-      ? this.cosmetics.pattern
-      : undefined;
+    const pattern = this.cosmetics.pattern;
     if (pattern) {
       pattern.colorPalette ??= {
         name: "",
@@ -264,6 +299,11 @@ export class PlayerView {
    */
   applyUpdate(pu: PlayerUpdate): void {
     applyStateUpdate(this.state, pu);
+    // applyStateUpdate refreshes outgoingEmojis every tick; re-apply the
+    // "Disable emojis" setting so live emojis stay hidden when it's off (#4430).
+    if (!userSettings.emojis()) {
+      this.state.outgoingEmojis = [];
+    }
   }
 
   /** Set the renderer-format embargoes (smallIDs). */
@@ -410,6 +450,18 @@ export class PlayerView {
     return owned.filter((u) => types.includes(u.type()));
   }
 
+  /** Missiles launchable right now: each silo holds `level` tubes, minus
+   *  those still reloading. Caps how many nukes a bulk purchase can fire. */
+  readyMissileCount(): number {
+    return this.units(UnitType.MissileSilo).reduce(
+      (acc, silo) =>
+        silo.isUnderConstruction()
+          ? acc
+          : acc + Math.max(0, silo.level() - silo.missileTimerQueue().length),
+      0,
+    );
+  }
+
   nameLocation(): NameViewData | undefined {
     return this.nameData;
   }
@@ -428,7 +480,11 @@ export class PlayerView {
       ? this.anonymousName
       : this.static.displayName;
   }
-
+  clanTag(): string | null {
+    return this.anonymousName !== null && userSettings.anonymousNames()
+      ? null
+      : this.static.clanTag;
+  }
   clientID(): ClientID | null {
     return this.static.clientID;
   }
@@ -454,6 +510,12 @@ export class PlayerView {
   isAlive(): boolean {
     return this.state.isAlive;
   }
+  killedBy(): string | null {
+    return this.state.killedBy;
+  }
+  deathPosition(): number | null {
+    return this.state.deathPosition;
+  }
   isPlayer(): this is PlayerView {
     return true;
   }
@@ -474,6 +536,26 @@ export class PlayerView {
     // Engine Gold is bigint; renderer state stores number. Convert back at the
     // accessor for game-code that still expects bigint semantics.
     return BigInt(this.state.gold);
+  }
+
+  /** Cumulative ship-trade revenue (for gold-rate columns). */
+  tradeGold(): number {
+    return this.state.tradeGold;
+  }
+
+  /** Cumulative train revenue: own trains + external stops at own stations. */
+  trainGold(): number {
+    return this.state.trainGold;
+  }
+
+  /** Cumulative piracy revenue: captured-ship payouts. */
+  piracyGold(): number {
+    return this.state.piracyGold;
+  }
+
+  /** Cumulative gold received from all sources. */
+  goldEarned(): number {
+    return this.state.goldEarned;
   }
 
   troops(): number {
@@ -596,6 +678,9 @@ export class PlayerView {
   }
   inDoomsdayClock(): boolean {
     return this.state.inDoomsdayClock;
+  }
+  isDecaying(): boolean {
+    return this.state.isDecaying;
   }
   doomsdayClockTicks(): number {
     return this.inDoomsdayClock()

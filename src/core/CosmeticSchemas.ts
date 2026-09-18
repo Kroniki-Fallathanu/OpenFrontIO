@@ -6,14 +6,24 @@ import { PlayerPattern } from "./Schemas";
 export type Cosmetics = z.infer<typeof CosmeticsSchema>;
 export type Pattern = z.infer<typeof PatternSchema>;
 export type Flag = z.infer<typeof FlagSchema>;
+export type Crown = z.infer<typeof CrownSchema>;
 export type Skin = z.infer<typeof SkinSchema>;
 export type Pack = z.infer<typeof PackSchema>;
+// A cosmetic pack: a bundle of cosmetics sold for one hard-currency price
+// (distinct from Pack, which is a currency bundle).
+export type CosmeticPack = z.infer<typeof CosmeticPackSchema>;
+export type CosmeticPackItem = z.infer<typeof CosmeticPackItemSchema>;
 export type Subscription = z.infer<typeof SubscriptionSchema>;
 // An effect cosmetic of any type — discriminated on effectType (today
-// transportShipTrail + nukeTrail + nukeExplosion + structures; gains a member
-// per effectType).
+// transportShipTrail + nukeTrail + nukeExplosion + structures + warship +
+// train + railroad; gains a member per effectType).
 export type Effect = z.infer<typeof EffectSchema>;
 export type EffectType = z.infer<typeof EffectTypeSchema>;
+/** The catalog attribute shape of effects of the given effectType. */
+export type EffectAttributesFor<T extends EffectType> = Extract<
+  Effect,
+  { effectType: T }
+>["attributes"];
 // Shared by every trail effectType (transportShipTrail, nukeTrail, …).
 export type TrailEffectAttributes = z.infer<typeof TrailEffectAttributesSchema>;
 // Attributes of a nuke-explosion effect (a detonation FX, not a trail).
@@ -23,6 +33,16 @@ export type NukeExplosionAttributes = z.infer<
 // Attributes of a structures effect (recolors structure icons, not a trail).
 export type StructuresEffectAttributes = z.infer<
   typeof StructuresEffectAttributesSchema
+>;
+// Attributes of a warship effect (recolors warship sprites, not a trail).
+export type WarshipEffectAttributes = z.infer<
+  typeof WarshipEffectAttributesSchema
+>;
+// Attributes of a train effect (recolors train sprites, not a trail).
+export type TrainEffectAttributes = z.infer<typeof TrainEffectAttributesSchema>;
+// Attributes of a railroad effect (recolors railroad tracks, not a trail).
+export type RailroadEffectAttributes = z.infer<
+  typeof RailroadEffectAttributesSchema
 >;
 export type PatternName = z.infer<typeof CosmeticNameSchema>;
 export type Product = z.infer<typeof ProductSchema>;
@@ -96,6 +116,10 @@ export const FlagSchema = CosmeticSchema.extend({
   url: z.string(),
 });
 
+export const CrownSchema = CosmeticSchema.extend({
+  url: z.string(),
+});
+
 export const SkinSchema = CosmeticSchema.extend({
   url: z.string(),
 });
@@ -112,6 +136,9 @@ export const EFFECT_TYPES = [
   "nukeTrail",
   "nukeExplosion",
   "structures",
+  "warship",
+  "train",
+  "railroad",
 ] as const;
 export const EffectTypeSchema = z.enum(EFFECT_TYPES);
 
@@ -131,6 +158,17 @@ export type TrailEffectType = (typeof TRAIL_EFFECT_TYPES)[number];
 //    = how fast the bands scroll, in tiles/sec (0 = static).
 //  - "transition": the whole trail is one color at a time, cross-fading through
 //    the color list over time. `frequency` = color changes per second.
+//  - "spiral": a 3D vortex of helix strands around the unit's path, projected
+//    onto the map — strands emerge from the unit, flare to full width, and
+//    spin with depth shading (facing segments bright, receding ones dark).
+//    `radius` = helix amplitude in tiles; `strands` = number of strands (the
+//    renderer rounds and clamps to [1, 8]); `rotationSpeed` = how fast the vortex spins, in
+//    radians per second; the palette wraps once around the vortex
+//    circumference. radius must be positive (the geometry degenerates
+//    otherwise), so a non-positive value drops the entry like the enums. The
+//    vortex geometry is only rendered for nuke trails (as ribbons above the
+//    stamped trail); a spiral ship trail renders as a flat line in the first
+//    color.
 // solid = a single-color list; rainbow = the spectrum as a gradient. Colors are
 // unvalidated strings here; the renderer drops any it can't parse (and an empty
 // list falls back to the player's territory color).
@@ -146,6 +184,13 @@ export const TrailEffectAttributesSchema = z.discriminatedUnion("type", [
     colors: z.array(z.string()),
     frequency: z.number(),
   }),
+  z.object({
+    type: z.literal("spiral"),
+    colors: z.array(z.string()),
+    radius: z.number().positive(),
+    strands: z.number().positive(),
+    rotationSpeed: z.number(),
+  }),
 ]);
 
 // The bomb a nuke-explosion effect applies to. The store/selection UI groups
@@ -155,16 +200,18 @@ export const NUKE_EXPLOSION_TYPES = ["atom", "hydro", "mirvWarhead"] as const;
 export type NukeExplosionType = (typeof NUKE_EXPLOSION_TYPES)[number];
 
 // A nuke-explosion effect — a detonation FX, not a trail. `type` picks the
-// visual (an expanding "shockwave" ring, or a firework burst of twinkling
-// "sparkles") and `nukeType` the bomb; a value this client can't render is
+// visual (an expanding "shockwave" ring, a firework burst of twinkling
+// "sparkles", or "embers", a top-down pixel ember splash sharing the sparkles
+// fields) and `nukeType` the bomb; a value this client can't render is
 // dropped by lenientRecord instead of rendering wrong. Shared knobs:
 // `colors` is the palette; size (final effect width in tiles), speed (tiles/s
-// the width grows), thickness (ring band thickness — or average sparkle size,
-// glints vary ±50% around it — in tiles), and transitionSpeed (palette
-// colors/s) drive the animation. Sparkles also take density — roughly how
-// many sparkles the burst contains. size, thickness, and density must be
-// positive — a non-positive value hits undefined shader behavior, so the
-// entry is dropped like the enums; the renderer clamps speed and density.
+// the width grows), thickness (ring band thickness — or average sparkle/ember
+// size, glints vary ±50% around it — in tiles), and transitionSpeed (palette
+// colors/s) drive the animation. Sparkles and embers also take density —
+// roughly how many sparkles/embers the burst contains. size, thickness, and
+// density must be positive — a non-positive value hits undefined shader
+// behavior, so the entry is dropped like the enums; the renderer clamps speed
+// and density.
 export const NukeExplosionAttributesSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("shockwave"),
@@ -177,6 +224,16 @@ export const NukeExplosionAttributesSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("sparkles"),
+    nukeType: z.enum(NUKE_EXPLOSION_TYPES),
+    colors: z.array(z.string()),
+    size: z.number().positive(),
+    speed: z.number(),
+    thickness: z.number().positive(),
+    transitionSpeed: z.number(),
+    density: z.number().positive(),
+  }),
+  z.object({
+    type: z.literal("embers"),
     nukeType: z.enum(NUKE_EXPLOSION_TYPES),
     colors: z.array(z.string()),
     size: z.number().positive(),
@@ -210,7 +267,7 @@ const NukeExplosionEffectSchema = CosmeticSchema.extend({
 // separate schema, and the spatial semantics differ:
 //  - "gradient": the palette spans each structure icon's diagonal once (a
 //    visible gradient across the shape), sliding one full cycle every
-//    colorSize · 4 · count / movementSpeed seconds (the trail-equivalent pace).
+//    colorSize · count / movementSpeed seconds (the trail-equivalent pace).
 //  - "transition": the whole icon is one color at a time, cross-fading through
 //    the list. `frequency` = color changes per second.
 // Colors are unvalidated strings; the renderer drops any it can't parse (and
@@ -238,12 +295,65 @@ const StructuresEffectSchema = CosmeticSchema.extend({
   url: z.string().optional(),
 });
 
+// Warship-effect attributes: the same gradient/transition shapes and
+// icon-space semantics as the structures effect (the palette spans the sprite
+// once for "gradient"; "transition" cross-fades the whole sprite), so the
+// schema is shared rather than re-declared.
+export const WarshipEffectAttributesSchema = StructuresEffectAttributesSchema;
+
+// Recolors the owner's warships with gradient / transition styles. Unlike the
+// hover-gated structures effect, warships are few and mobile, so the effect
+// renders whenever the warship does; combat signals (the attacking-red
+// override, the retreat blink) take priority over the cosmetic.
+const WarshipEffectSchema = CosmeticSchema.extend({
+  effectType: z.literal("warship"),
+  attributes: WarshipEffectAttributesSchema,
+  url: z.string().optional(),
+});
+
+// Train-effect attributes: the same gradient/transition shapes as the trail
+// effects, with trail (world-space) semantics — a train is a line of tiny
+// sprites, so "gradient" bands the map like a trail (colorSize = band width in
+// tiles, movementSpeed = tiles/sec) and runs along the whole train;
+// "transition" cross-fades every car.
+export const TrainEffectAttributesSchema = StructuresEffectAttributesSchema;
+
+// Recolors the owner's trains (engine and carriages) with gradient /
+// transition styles. Always visible, like the warship effect. Train sprites
+// are tiny and the engine is drawn entirely in the border band, so the effect
+// recolors both bands (border band darkened) rather than just the fill.
+const TrainEffectSchema = CosmeticSchema.extend({
+  effectType: z.literal("train"),
+  attributes: TrainEffectAttributesSchema,
+  url: z.string().optional(),
+});
+
+// Railroad-effect attributes: the same gradient/transition shapes as the
+// trail effects, with trail (world-space) semantics — rails are static map
+// geometry, so "gradient" bands the map like a trail (colorSize = band width
+// in tiles, movementSpeed = tiles/sec) and "transition" cross-fades the
+// whole track.
+export const RailroadEffectAttributesSchema = StructuresEffectAttributesSchema;
+
+// Recolors railroad tracks on the owner's territory with gradient / transition
+// styles (rails are colored by the tile owner, so the effect follows that).
+// Like the structures effect, shown while the owner's territory is hovered
+// and always for the local player.
+const RailroadEffectSchema = CosmeticSchema.extend({
+  effectType: z.literal("railroad"),
+  attributes: RailroadEffectAttributesSchema,
+  url: z.string().optional(),
+});
+
 // Any catalog effect, discriminated on effectType. Add a member per effectType.
 export const EffectSchema = z.discriminatedUnion("effectType", [
   TransportShipTrailEffectSchema,
   NukeTrailEffectSchema,
   NukeExplosionEffectSchema,
   StructuresEffectSchema,
+  WarshipEffectSchema,
+  TrainEffectSchema,
+  RailroadEffectSchema,
 ]);
 
 /**
@@ -267,8 +377,8 @@ export function isNukeExplosionEffect(
 
 /**
  * A player selects one effect per "slot". A slot is the effectType itself for
- * per-type effects (transportShipTrail, nukeTrail, structures) and the
- * nukeType for nuke explosions (atom, hydro, mirvWarhead) — so a player can
+ * per-type effects (transportShipTrail, nukeTrail, structures, warship, train,
+ * railroad) and the nukeType for nuke explosions (atom, hydro, mirvWarhead) — so a player can
  * equip a distinct explosion per bomb. Returns the effectType a slot resolves
  * to for catalog lookup, or undefined for an unknown/stale slot (e.g. a bare
  * "nukeExplosion" key from before the per-nukeType split).
@@ -348,11 +458,49 @@ export const PackSchema = CosmeticSchema.extend({
   bonusAmount: z.number().int().nonnegative(),
 });
 
+// One member of a cosmetic pack: a reference to a cosmetic elsewhere in the
+// same catalog by (type, name). patterns/flags/skins/crowns live in
+// `<type>s[name]`; an effect is found by name across effects[*] (the item
+// does not carry its effectType). A pattern item names the colour palette
+// it grants ("pattern:<name>:<palette>", the same flare a single purchase
+// grants); without one it is the legacy uncoloured variant. The referenced
+// cosmetic may be absent (it was deleted after the listing was cached) or
+// not sold on its own — the pack is rendered from its items, never gated on
+// the item's own price.
+export const CosmeticPackItemSchema = z.object({
+  type: z.enum(["pattern", "flag", "skin", "crown", "effect"]),
+  name: CosmeticNameSchema,
+  colorPalette: z.string().optional(),
+});
+
+// A bundle of cosmetics bought in one hard-currency transaction
+// (POST /shop/purchase/pack). `name` is the slug sent to that endpoint. Only
+// packs that are for sale are listed. The price is the pack's own, not the
+// sum of its items; packs never have a soft-currency price.
+export const CosmeticPackSchema = z.object({
+  name: CosmeticNameSchema,
+  displayName: z.string(),
+  description: z.string(),
+  priceHard: z.number(),
+  rarity: z
+    .enum(["common", "uncommon", "rare", "epic", "legendary"])
+    .or(z.string()),
+  items: CosmeticPackItemSchema.array(),
+});
+
 export const SubscriptionSchema = CosmeticSchema.extend({
   description: z.string(),
   priceMonthly: z.number(),
   dailySoftCurrency: z.number(),
   dailyHardCurrency: z.number(),
+  // One-time plutonium grant on subscribing (advertised on the store tile).
+  hardCurrencySignupBonus: z.number(),
+  // Whether this tier exempts subscribers from the free-ranked-play limits
+  // (advertised on the store tile).
+  unlimitedRanked: z.boolean(),
+  // Whether this tier lets subscribers list custom lobbies publicly
+  // (advertised on the store tile).
+  canCreatePublicLobbies: z.boolean(),
 });
 
 // Schema for resources/cosmetics/cosmetics.json
@@ -360,6 +508,7 @@ export const CosmeticsSchema = z.object({
   colorPalettes: z.record(z.string(), ColorPaletteSchema).optional(),
   patterns: z.record(z.string(), PatternSchema),
   flags: z.record(z.string(), FlagSchema),
+  crowns: z.record(z.string(), CrownSchema).optional(),
   skins: z.record(z.string(), SkinSchema).optional(),
   // Grouped by effectType. Each effect also carries its own effectType (matching
   // this outer key) so an Effect stands alone and EffectSchema can discriminate
@@ -375,10 +524,26 @@ export const CosmeticsSchema = z.object({
       nukeTrail: lenientRecord(NukeTrailEffectSchema).optional(),
       nukeExplosion: lenientRecord(NukeExplosionEffectSchema).optional(),
       structures: lenientRecord(StructuresEffectSchema).optional(),
+      warship: lenientRecord(WarshipEffectSchema).optional(),
+      train: lenientRecord(TrainEffectSchema).optional(),
+      railroad: lenientRecord(RailroadEffectSchema).optional(),
     })
     .optional(),
   currencyPacks: z.record(z.string(), PackSchema).optional(),
+  // Cosmetic packs keyed by slug. Lenient so a pack whose items use a type
+  // this client doesn't know is dropped alone, not the whole catalog.
+  packs: lenientRecord(CosmeticPackSchema).optional(),
   subscriptions: z.record(z.string(), SubscriptionSchema).optional(),
+  // Custom tribe name pricing (store Tribes tab) — served here so the client
+  // never hardcodes it. Optional: an older cosmetics.json parses, and the UI
+  // hides boost purchasing when absent.
+  tribeNames: z
+    .object({
+      priceHard: z.number(),
+      boostPriceHard: z.number(),
+      boostDurationDays: z.number(),
+    })
+    .optional(),
 });
 
 /**
