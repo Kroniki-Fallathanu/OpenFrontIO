@@ -1,4 +1,5 @@
 import { renderTroops } from "../../client/Utils";
+import { AttackLogicInput } from "../configuration/Config";
 import {
   Attack,
   Difficulty,
@@ -10,6 +11,7 @@ import {
   PlayerType,
   TerrainType,
   TerraNullius,
+  UnitType,
 } from "../game/Game";
 import { GameMap, TileRef } from "../game/GameMap";
 import { PseudoRandom } from "../PseudoRandom";
@@ -114,7 +116,11 @@ export class AttackExecution implements Execution {
       .attackAmount(this._owner, this.target);
     if (this.removeTroops) {
       this.startTroops = Math.min(this._owner.troops(), this.startTroops);
-      this._owner.removeTroops(this.startTroops);
+      // Take the amount that was actually deducted, not the amount asked for.
+      // removeTroops() floors, so a fractional request leaves the attack
+      // holding troops the owner never paid for — and retreat refunds the
+      // combined total, turning the leftover fractions into free troops.
+      this.startTroops = this._owner.removeTroops(this.startTroops);
     }
     this.attack = this._owner.createAttack(
       this.target,
@@ -158,6 +164,13 @@ export class AttackExecution implements Execution {
       }
     }
 
+    // Only now is it known how large the attack the defender actually faces
+    // is: a big assault is built by clicking repeatedly, and each click's
+    // execution absorbs the earlier ones above. Recorded before the loops it
+    // would measure one click, and would count an attack that cancelled out
+    // and never landed.
+    this.mg.stats().attackMaxIncoming(this.target, this.attack.troops());
+
     if (this.target.isPlayer()) {
       const difficulty = this.mg.config().gameConfig().difficulty;
       let relationChange: number;
@@ -188,9 +201,8 @@ export class AttackExecution implements Execution {
 
     this.toConquer.clear();
     this.attack.clearBorder();
-    for (const tile of this._owner.borderTiles()) {
-      this.addNeighbors(tile);
-    }
+    // forEach over the dense storage — the values() generator showed up in long-game profiles
+    this._owner.borderTiles().forEach((tile) => this.addNeighbors(tile));
   }
 
   private retreat(malusPercent = 0) {
@@ -260,16 +272,11 @@ export class AttackExecution implements Execution {
       return;
     }
 
-    let numTilesPerTick = this.mg
-      .config()
-      .attackTilesPerTick(
-        troopCount,
-        this._owner,
-        this.target,
-        this.attack.borderSize() + this.random.nextInt(0, 5),
-      );
+    const borderSize = this.attack.borderSize() + this.random.nextInt(0, 5);
+    // Each tile consumes a fraction of the tick; conquer until it is spent.
+    let tickBudget = 1;
 
-    while (numTilesPerTick > 0) {
+    while (tickBudget > 0) {
       if (troopCount < 1) {
         this.attack.delete();
         this.active = false;
@@ -296,20 +303,19 @@ export class AttackExecution implements Execution {
       if (this.map.ownerID(tileToConquer) !== this.targetSmallID || !onBorder) {
         continue;
       }
-      if (!this.map.isLand(tileToConquer)) {
+      if (
+        !this.map.isLand(tileToConquer) ||
+        this.map.isImpassable(tileToConquer)
+      ) {
         continue;
       }
       this.addNeighbors(tileToConquer);
-      const { attackerTroopLoss, defenderTroopLoss, tilesPerTickUsed } = this.mg
+      const { attackerTroopLoss, defenderTroopLoss, tickFraction } = this.mg
         .config()
         .attackLogic(
-          this.mg,
-          troopCount,
-          this._owner,
-          this.target,
-          tileToConquer,
+          this.attackLogicInput(troopCount, tileToConquer, borderSize),
         );
-      numTilesPerTick -= tilesPerTickUsed;
+      tickBudget -= tickFraction;
       troopCount -= attackerTroopLoss;
       this.attack.setTroops(troopCount);
       if (targetPlayer) {
@@ -318,6 +324,50 @@ export class AttackExecution implements Execution {
       this._owner.conquer(tileToConquer);
       this.handleDeadDefender();
     }
+  }
+
+  private attackLogicInput(
+    attackTroops: number,
+    tile: TileRef,
+    borderSize: number,
+  ): AttackLogicInput {
+    const defender = this.target.isPlayer() ? this.target : null;
+    // Same test as scanning nearbyUnits() for a post owned by the defender
+    // (active, not under construction, within range), without building a
+    // result array per conquered tile — this runs for every tile of every
+    // attack on the map.
+    const defenderHasDefensePost =
+      defender !== null &&
+      this.mg.hasUnitNearby(
+        tile,
+        this.mg.config().defensePostRange(),
+        UnitType.DefensePost,
+        defender.id(),
+      );
+    return {
+      terrain: this.map.terrainType(tile),
+      attackTroops,
+      attacker: {
+        type: this._owner.type(),
+        numTiles: this._owner.numTilesOwned(),
+      },
+      defender:
+        defender === null
+          ? null
+          : {
+              type: defender.type(),
+              numTiles: defender.numTilesOwned(),
+              troops: defender.troops(),
+              isTraitor: defender.isTraitor(),
+              isDisconnectedTeammate:
+                defender.isDisconnected() && this._owner.isOnSameTeam(defender),
+            },
+      defenderHasDefensePost,
+      falloutRatio: this.mg.hasFallout(tile)
+        ? this.mg.numTilesWithFallout() / this.mg.numLandTiles()
+        : null,
+      borderSize,
+    };
   }
 
   private rejectIncomingAllianceRequests(target: Player) {
@@ -341,6 +391,7 @@ export class AttackExecution implements Execution {
       const neighbor = this.nbuf[i];
       if (
         this.map.isWater(neighbor) ||
+        this.map.isImpassable(neighbor) ||
         this.map.ownerID(neighbor) !== this.targetSmallID
       ) {
         continue;
@@ -384,7 +435,9 @@ export class AttackExecution implements Execution {
 
     this.mg.conquerPlayer(this._owner, target);
 
-    for (let i = 0; i < 10; i++) {
+    const MAX_PASSES = 100;
+    for (let pass = 0; pass < MAX_PASSES; pass++) {
+      let progressed = false;
       for (const tile of target.tiles()) {
         let borders = false;
         this.mg.forEachNeighbor(tile, (t) => {
@@ -394,6 +447,7 @@ export class AttackExecution implements Execution {
         });
         if (borders) {
           this._owner.conquer(tile);
+          progressed = true;
         } else {
           let captured = false;
           this.mg.forEachNeighbor(tile, (neighbor) => {
@@ -404,8 +458,10 @@ export class AttackExecution implements Execution {
               captured = true;
             }
           });
+          if (captured) progressed = true;
         }
       }
+      if (!progressed) break;
     }
   }
 

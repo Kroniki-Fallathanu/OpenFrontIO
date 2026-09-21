@@ -1,5 +1,10 @@
 // Renderer types (units, players, tiles, names, config)
-export { PlayerTypeEnum, TrainType } from "./Renderer";
+export {
+  DEFAULT_NUKE_EXPLOSION_COLOR,
+  MAX_NUKE_EXPLOSION_COLORS,
+  PlayerTypeEnum,
+  TrainType,
+} from "./Renderer";
 export type {
   AllianceData,
   AttackData,
@@ -9,13 +14,14 @@ export type {
   EmojiData,
   GhostPreviewData,
   NameEntry,
+  NukeExplosionRenderParams,
   NukeTelegraphData,
   NukeTrajectoryData,
   PlayerState,
   PlayerStatic,
   PlayerStatusData,
   RendererConfig,
-  TilePair,
+  TerrainRect,
   UnitState,
 } from "./Renderer";
 
@@ -30,6 +36,7 @@ export {
   ALL_UNIT_TYPES,
   NUKE_MAGNITUDES,
   NUKE_TYPES,
+  SMOOTHED_NUKE_TYPES,
   STRUCTURE_TYPES,
   UT_ATOM_BOMB,
   UT_CITY,

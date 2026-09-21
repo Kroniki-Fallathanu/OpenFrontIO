@@ -4,6 +4,7 @@ import { tempTokenLogin } from "./Auth";
 import { BaseModal } from "./components/BaseModal";
 import "./components/Difficulties";
 import { modalHeader } from "./components/ui/ModalHeader";
+import { showInGameAlert } from "./InGameModal";
 import { translateText } from "./Utils";
 
 @customElement("token-login")
@@ -43,7 +44,7 @@ export class TokenLoginModal extends BaseModal {
   }
 
   private loggingIn() {
-    const loggingText = translateText("token_login_modal.logging_in");
+    const loggingText = translateText("token_login_modal.title");
     return html`
       <div class="flex items-center gap-4">
         <div
@@ -110,7 +111,7 @@ export class TokenLoginModal extends BaseModal {
     }
     if (this.attemptCount > 3) {
       this.close();
-      alert("Login failed. Please try again later.");
+      void showInGameAlert(translateText("error_modal.login_failed"));
       return;
     }
     this.attemptCount++;
@@ -120,10 +121,25 @@ export class TokenLoginModal extends BaseModal {
       return;
     }
     try {
-      this.email = await tempTokenLogin(this.token);
-      if (!this.email) {
+      const result = await tempTokenLogin(this.token);
+      if (result.status === "retry") {
         return;
       }
+      if (result.status === "failed") {
+        // A 400 is final — stop polling instead of burning the remaining
+        // retries and the player's time on a link that will never succeed.
+        clearInterval(this.retryInterval);
+        this.close();
+        void showInGameAlert(
+          translateText(
+            result.code === "consumed"
+              ? "error_modal.login_token_consumed"
+              : "error_modal.login_failed",
+          ),
+        );
+        return;
+      }
+      this.email = result.email;
       clearInterval(this.retryInterval);
       setTimeout(() => {
         this.close();

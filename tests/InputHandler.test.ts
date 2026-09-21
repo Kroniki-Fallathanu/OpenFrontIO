@@ -1,13 +1,20 @@
 import {
+  AlternateViewEvent,
   AutoUpgradeEvent,
+  CloseViewEvent,
   ConfirmGhostStructureEvent,
+  ContextMenuEvent,
+  DragEvent,
   InputHandler,
+  MouseOverEvent,
+  TouchLongPressStartEvent,
+  UnitSelectionEvent,
   WarshipSelectionBoxCancelEvent,
   WarshipSelectionBoxCompleteEvent,
   WarshipSelectionBoxUpdateEvent,
 } from "../src/client/InputHandler";
 import { UIState } from "../src/client/UIState";
-import { GameView, PlayerView } from "../src/client/view";
+import { GameView, PlayerView, UnitView } from "../src/client/view";
 import { EventBus } from "../src/core/EventBus";
 import { UnitType } from "../src/core/game/Game";
 import { KEYBINDS_KEY, UserSettings } from "../src/core/game/UserSettings";
@@ -65,6 +72,7 @@ describe("InputHandler AutoUpgrade", () => {
         attackRatio: 20,
         ghostStructure: null,
         rocketDirectionUp: true,
+        upgradeMultiplier: 1,
       },
       mockCanvas,
       eventBus,
@@ -284,6 +292,77 @@ describe("InputHandler AutoUpgrade", () => {
         (call) => call[0].constructor.name,
       );
       expect(emittedTypes).not.toContain("ContextMenuEvent");
+    });
+  });
+
+  describe("Left-click menu with ghost structure (#4789)", () => {
+    test("should emit MouseUpEvent and not ContextMenuEvent when placing a ghost structure with left-click menu enabled", () => {
+      const mockEmit = vi.spyOn(eventBus, "emit");
+
+      inputHandler["userSettings"].leftClickOpensMenu = () => true;
+      inputHandler["uiState"].ghostStructure = UnitType.City;
+
+      const pointerEvent = new PointerEvent("pointerup", {
+        button: 0,
+        clientX: 150,
+        clientY: 250,
+      });
+      inputHandler["lastPointerDownX"] = 149;
+      inputHandler["lastPointerDownY"] = 249;
+
+      inputHandler["onPointerUp"](pointerEvent);
+
+      const emittedTypes = mockEmit.mock.calls.map(
+        (call) => call[0].constructor.name,
+      );
+      expect(emittedTypes).toContain("MouseUpEvent");
+      expect(emittedTypes).not.toContain("ContextMenuEvent");
+    });
+
+    test("should emit MouseUpEvent and not ContextMenuEvent when placing a warship with left-click menu enabled", () => {
+      const mockEmit = vi.spyOn(eventBus, "emit");
+
+      inputHandler["userSettings"].leftClickOpensMenu = () => true;
+      inputHandler["uiState"].ghostStructure = UnitType.Warship;
+
+      const pointerEvent = new PointerEvent("pointerup", {
+        button: 0,
+        clientX: 150,
+        clientY: 250,
+      });
+      inputHandler["lastPointerDownX"] = 149;
+      inputHandler["lastPointerDownY"] = 249;
+
+      inputHandler["onPointerUp"](pointerEvent);
+
+      const emittedTypes = mockEmit.mock.calls.map(
+        (call) => call[0].constructor.name,
+      );
+      expect(emittedTypes).toContain("MouseUpEvent");
+      expect(emittedTypes).not.toContain("ContextMenuEvent");
+    });
+
+    test("should still emit ContextMenuEvent on left click release when no ghost structure is active", () => {
+      const mockEmit = vi.spyOn(eventBus, "emit");
+
+      inputHandler["userSettings"].leftClickOpensMenu = () => true;
+      expect(inputHandler["uiState"].ghostStructure).toBeNull();
+
+      const pointerEvent = new PointerEvent("pointerup", {
+        button: 0,
+        clientX: 150,
+        clientY: 250,
+      });
+      inputHandler["lastPointerDownX"] = 149;
+      inputHandler["lastPointerDownY"] = 249;
+
+      inputHandler["onPointerUp"](pointerEvent);
+
+      const emittedTypes = mockEmit.mock.calls.map(
+        (call) => call[0].constructor.name,
+      );
+      expect(emittedTypes).toContain("ContextMenuEvent");
+      expect(emittedTypes).not.toContain("MouseUpEvent");
     });
   });
 
@@ -636,6 +715,62 @@ describe("InputHandler AutoUpgrade", () => {
     });
   });
 
+  describe("Digit keys still set ghost structure when bound to Numpad", () => {
+    beforeEach(() => {
+      inputHandler.destroy();
+      testSettings.setKeybinds({
+        buildCity: "Numpad1",
+        buildMIRV: "Numpad0",
+      });
+      const uiState: UIState = {
+        attackRatio: 20,
+        ghostStructure: null,
+        rocketDirectionUp: true,
+      } as UIState;
+      inputHandler = new InputHandler(
+        mockGameView,
+        uiState,
+        mockCanvas,
+        eventBus,
+      );
+      inputHandler.initialize();
+    });
+    test("Digit1 sets ghost structure to City when buildCity is Numpad1", () => {
+      window.dispatchEvent(
+        new KeyboardEvent("keyup", { code: "Digit1", key: "1" }),
+      );
+      expect(inputHandler["uiState"].ghostStructure).toBe(UnitType.City);
+    });
+    test("Digit0 sets ghost structrue to MIRV when buildMIRV is Numpad0", () => {
+      window.dispatchEvent(
+        new KeyboardEvent("keyup", { code: "Digit0", key: "0" }),
+      );
+      expect(inputHandler["uiState"].ghostStructure).toBe(UnitType.MIRV);
+    });
+  });
+
+  describe("InputHandler keybind registry", () => {
+    function makeHandler() {
+      return new InputHandler(
+        {} as any, // gameView
+        {} as any, // uiState
+        document.createElement("div"), // canvas
+        {} as any, // eventBus
+      );
+    }
+
+    test("two actions bound to the same key are both kept (no overwrite)", () => {
+      const ih = makeHandler() as any;
+      ih.keybindAndEvent = [];
+      ih.addKeybindAndEvent("KeyX", () => {});
+      ih.addKeybindAndEvent("KeyX", () => {});
+
+      const entries = ih.keybindAndEvent.filter(
+        ([k]: [string, unknown]) => k === "KeyX",
+      );
+      expect(entries.length).toBe(2); // would have been 1 with the old Map
+    });
+  });
   describe("Build keybind two-phase matching (exact code first, then digit/Numpad alias)", () => {
     beforeEach(() => {
       inputHandler.destroy();
@@ -1038,5 +1173,456 @@ describe("Warship box selection (Shift+drag)", () => {
     expect(mockCanvas.style.cursor).toBe("crosshair");
     window.dispatchEvent(new Event("blur"));
     expect(mockCanvas.style.cursor).toBe("");
+  });
+});
+
+describe("InputHandler right-click cancels unit selection (#4692)", () => {
+  let inputHandler: InputHandler;
+  let eventBus: EventBus;
+  let canvas: HTMLCanvasElement;
+
+  beforeEach(() => {
+    new UserSettings().removeCached(KEYBINDS_KEY, false);
+    canvas = document.createElement("canvas");
+    canvas.width = 800;
+    canvas.height = 600;
+    eventBus = new EventBus();
+    inputHandler = new InputHandler(
+      {
+        inSpawnPhase: () => false,
+        myPlayer: () => ({ isAlive: () => true }),
+      } as unknown as GameView,
+      {
+        attackRatio: 20,
+        ghostStructure: null,
+        rocketDirectionUp: true,
+        upgradeMultiplier: 1,
+      },
+      canvas,
+      eventBus,
+    );
+    inputHandler.initialize();
+  });
+
+  afterEach(() => inputHandler.destroy());
+
+  const rightClick = () =>
+    inputHandler["onContextMenu"]({
+      preventDefault: () => {},
+      clientX: 100,
+      clientY: 100,
+    } as unknown as MouseEvent);
+
+  const emittedTypes = (spy: ReturnType<typeof vi.spyOn>) =>
+    spy.mock.calls.map((c: unknown[]) => (c[0] as object).constructor.name);
+
+  it("opens the context menu on right-click when nothing is selected", () => {
+    const emit = vi.spyOn(eventBus, "emit");
+    rightClick();
+    expect(emittedTypes(emit)).toContain("ContextMenuEvent");
+  });
+
+  it("cancels the selection and suppresses the context menu when a warship is selected", () => {
+    // Select a warship (wires unitSelectionActive via the real listener).
+    eventBus.emit(
+      new UnitSelectionEvent({ id: () => 1 } as unknown as UnitView, true),
+    );
+    const emit = vi.spyOn(eventBus, "emit");
+    rightClick();
+    const emitted = emit.mock.calls.map((c: unknown[]) => c[0]);
+    // A deselection specifically (unit === null, isSelected === false) must be
+    // emitted — not just any UnitSelectionEvent.
+    const deselect = emitted.find(
+      (e): e is UnitSelectionEvent => e instanceof UnitSelectionEvent,
+    );
+    expect(deselect).toBeDefined();
+    expect(deselect!.unit).toBeNull();
+    expect(deselect!.isSelected).toBe(false);
+    // ...and the context menu must NOT open.
+    expect(emitted.some((e) => e instanceof ContextMenuEvent)).toBe(false);
+  });
+
+  it("emits UnitSelectionEvent(null, false) on Escape when warships are selected", () => {
+    eventBus.emit(
+      new UnitSelectionEvent({ id: () => 1 } as unknown as UnitView, true),
+    );
+    const emit = vi.spyOn(eventBus, "emit");
+
+    const escEvent = new KeyboardEvent("keydown", { code: "Escape" });
+    window.dispatchEvent(escEvent);
+
+    const emitted = emit.mock.calls.map((c: unknown[]) => c[0]);
+    const deselect = emitted.find(
+      (e): e is UnitSelectionEvent =>
+        e instanceof UnitSelectionEvent && !e.isSelected,
+    );
+    expect(deselect).toBeDefined();
+    expect(deselect!.unit).toBeNull();
+  });
+
+  it("does NOT deselect warships on Escape if ghost structure is active", () => {
+    eventBus.emit(
+      new UnitSelectionEvent({ id: () => 1 } as unknown as UnitView, true),
+    );
+    inputHandler["uiState"].ghostStructure = 1 as any;
+    const emit = vi.spyOn(eventBus, "emit");
+
+    const escEvent = new KeyboardEvent("keydown", { code: "Escape" });
+    window.dispatchEvent(escEvent);
+
+    const emitted = emit.mock.calls.map((c: unknown[]) => c[0]);
+    const deselect = emitted.find(
+      (e): e is UnitSelectionEvent =>
+        e instanceof UnitSelectionEvent && !e.isSelected,
+    );
+    expect(deselect).toBeUndefined();
+  });
+
+  it("does NOT deselect warships on Escape if selectionBoxActive is true", () => {
+    eventBus.emit(
+      new UnitSelectionEvent({ id: () => 1 } as unknown as UnitView, true),
+    );
+    inputHandler["selectionBoxActive"] = true;
+    const emit = vi.spyOn(eventBus, "emit");
+
+    const escEvent = new KeyboardEvent("keydown", { code: "Escape" });
+    window.dispatchEvent(escEvent);
+
+    const emitted = emit.mock.calls.map((c: unknown[]) => c[0]);
+    const deselect = emitted.find(
+      (e): e is UnitSelectionEvent =>
+        e instanceof UnitSelectionEvent && !e.isSelected,
+    );
+    expect(deselect).toBeUndefined();
+    expect(
+      emitted.some((e) => e instanceof WarshipSelectionBoxCancelEvent),
+    ).toBe(true);
+  });
+});
+
+describe("InputHandler teardown (OPE-411)", () => {
+  const makeHandler = (canvas: HTMLElement, eventBus: EventBus) =>
+    new InputHandler(
+      {
+        inSpawnPhase: () => false,
+        myPlayer: () => ({ isAlive: () => true }),
+      } as unknown as GameView,
+      {
+        attackRatio: 20,
+        ghostStructure: null,
+        rocketDirectionUp: true,
+        upgradeMultiplier: 1,
+      },
+      canvas,
+      eventBus,
+    );
+
+  let inputHandler: InputHandler;
+  let eventBus: EventBus;
+  let canvas: HTMLCanvasElement;
+
+  beforeEach(() => {
+    new UserSettings().removeCached(KEYBINDS_KEY, false);
+    canvas = document.createElement("canvas");
+    canvas.width = 800;
+    canvas.height = 600;
+    eventBus = new EventBus();
+    inputHandler = makeHandler(canvas, eventBus);
+    inputHandler.initialize();
+  });
+
+  afterEach(() => inputHandler.destroy());
+
+  it("emits AlternateViewEvent on Space while alive", () => {
+    const emit = vi.spyOn(eventBus, "emit");
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }));
+    expect(
+      emit.mock.calls.some(
+        (c: unknown[]) => c[0] instanceof AlternateViewEvent,
+      ),
+    ).toBe(true);
+  });
+
+  it("emits CloseViewEvent on Escape while alive", () => {
+    const emit = vi.spyOn(eventBus, "emit");
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape" }));
+    expect(
+      emit.mock.calls.some((c: unknown[]) => c[0] instanceof CloseViewEvent),
+    ).toBe(true);
+  });
+
+  it("emits nothing on a window keydown after destroy()", () => {
+    inputHandler.destroy();
+    const emit = vi.spyOn(eventBus, "emit");
+    // Escape is the load-bearing probe: its CloseViewEvent is emitted
+    // unconditionally, so it still fires if the keydown listener survives
+    // destroy(). Space goes through this.keybinds, which destroy() also
+    // clears, so a Space-only probe would pass even with the abort reverted.
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape" }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }));
+    window.dispatchEvent(new KeyboardEvent("keyup", { code: "Space" }));
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it("emits nothing on a canvas event after destroy()", () => {
+    inputHandler.destroy();
+    const emit = vi.spyOn(eventBus, "emit");
+    canvas.dispatchEvent(
+      new MouseEvent("contextmenu", { clientX: 100, clientY: 100 }),
+    );
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it("clears keybinds and the keybind dispatch table on destroy()", () => {
+    expect(Object.keys(inputHandler["keybinds"]).length).toBeGreaterThan(0);
+    expect(inputHandler["keybindAndEvent"].length).toBeGreaterThan(0);
+
+    inputHandler.destroy();
+    expect(inputHandler["keybinds"]).toEqual({});
+    expect(inputHandler["keybindAndEvent"]).toEqual([]);
+  });
+
+  it("is safe to destroy twice", () => {
+    inputHandler.destroy();
+    expect(() => inputHandler.destroy()).not.toThrow();
+
+    const emit = vi.spyOn(eventBus, "emit");
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }));
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it("destroying one handler leaves a later handler working", () => {
+    const secondBus = new EventBus();
+    const secondCanvas = document.createElement("canvas");
+    const second = makeHandler(secondCanvas, secondBus);
+    second.initialize();
+
+    try {
+      inputHandler.destroy();
+
+      const deadEmit = vi.spyOn(eventBus, "emit");
+      const liveEmit = vi.spyOn(secondBus, "emit");
+      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape" }));
+
+      expect(deadEmit).not.toHaveBeenCalled();
+      expect(
+        liveEmit.mock.calls.some(
+          (c: unknown[]) => c[0] instanceof CloseViewEvent,
+        ),
+      ).toBe(true);
+    } finally {
+      // Must run even if an expectation throws, or a live window listener
+      // leaks into every later test in this file.
+      second.destroy();
+    }
+  });
+
+  it("cancels a pending long-press timer on destroy()", () => {
+    vi.useFakeTimers();
+    const bus = new EventBus();
+    const handler = makeHandler(document.createElement("canvas"), bus);
+    try {
+      handler.initialize();
+      touchOrMouseDown(handler, "touch");
+      expect(handler["longPressTimer"]).not.toBeNull();
+
+      handler.destroy();
+      const emit = vi.spyOn(bus, "emit");
+      vi.advanceTimersByTime(2000);
+
+      expect(emit).not.toHaveBeenCalled();
+      expect(handler["longPressActive"]).toBe(false);
+    } finally {
+      handler.destroy();
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels a pending long-press timer on re-initialize", () => {
+    vi.useFakeTimers();
+    const bus = new EventBus();
+    const handler = makeHandler(document.createElement("canvas"), bus);
+    try {
+      handler.initialize();
+      touchOrMouseDown(handler, "touch");
+
+      handler.initialize();
+      const emit = vi.spyOn(bus, "emit");
+      vi.advanceTimersByTime(2000);
+
+      expect(
+        emit.mock.calls.some(
+          (c: unknown[]) => c[0] instanceof TouchLongPressStartEvent,
+        ),
+      ).toBe(false);
+    } finally {
+      handler.destroy();
+      vi.useRealTimers();
+    }
+  });
+
+  it("releases its EventBus subscription on destroy()", () => {
+    const unit = { id: () => 1 } as unknown as UnitView;
+
+    // Control: while alive the subscription drives the cursor.
+    eventBus.emit(new UnitSelectionEvent(unit, true));
+    expect(canvas.style.cursor).toBe("crosshair");
+    canvas.style.cursor = "";
+
+    inputHandler.destroy();
+
+    // The EventBus is page-global, so a subscription left behind would keep
+    // this handler alive and run it against the next game's events. Both
+    // probes are discriminating: a live subscription would set the crosshair
+    // on the first, and clear unitSelectionActive on the second.
+    eventBus.emit(new UnitSelectionEvent(unit, true));
+    expect(canvas.style.cursor).toBe("");
+
+    eventBus.emit(new UnitSelectionEvent(null, false));
+    expect(inputHandler["unitSelectionActive"]).toBe(true);
+  });
+
+  const touchOrMouseDown = (handler: InputHandler, pointerType: string) =>
+    handler["onPointerDown"](
+      new PointerEvent("pointerdown", {
+        button: 0,
+        clientX: 100,
+        clientY: 100,
+        pointerId: 1,
+        pointerType,
+      }),
+    );
+
+  const movePointer = (handler: InputHandler) =>
+    handler["onPointerMove"](
+      new PointerEvent("pointermove", {
+        button: 0,
+        clientX: 400,
+        clientY: 400,
+        pointerId: 1,
+        pointerType: "mouse",
+      }),
+    );
+
+  it("drops in-flight pointer state on re-initialize", () => {
+    // pointers.clear() runs unconditionally on initialize, so leaving
+    // pointerDown latched would make the next ordinary move a drag from a
+    // stale origin.
+    touchOrMouseDown(inputHandler, "mouse");
+    expect(inputHandler["pointerDown"]).toBe(true);
+
+    inputHandler.initialize();
+
+    const emit = vi.spyOn(eventBus, "emit");
+    movePointer(inputHandler);
+
+    expect(
+      emit.mock.calls.some((c: unknown[]) => c[0] instanceof DragEvent),
+    ).toBe(false);
+    expect(
+      emit.mock.calls.some((c: unknown[]) => c[0] instanceof MouseOverEvent),
+    ).toBe(true);
+  });
+
+  // resetPointerState() is shared with the blur handler; blur owes a cancel
+  // event that the other two callers must not emit, so lock both halves.
+  it("window blur still cancels an active selection box", () => {
+    inputHandler["selectionBoxActive"] = true;
+    const emit = vi.spyOn(eventBus, "emit");
+
+    window.dispatchEvent(new Event("blur"));
+
+    expect(
+      emit.mock.calls.some(
+        (c: unknown[]) => c[0] instanceof WarshipSelectionBoxCancelEvent,
+      ),
+    ).toBe(true);
+    expect(inputHandler["selectionBoxActive"]).toBe(false);
+    expect(inputHandler["pointerDown"]).toBe(false);
+  });
+
+  it("window blur emits no cancel when nothing was selected", () => {
+    const emit = vi.spyOn(eventBus, "emit");
+
+    window.dispatchEvent(new Event("blur"));
+
+    expect(
+      emit.mock.calls.some(
+        (c: unknown[]) => c[0] instanceof WarshipSelectionBoxCancelEvent,
+      ),
+    ).toBe(false);
+  });
+
+  it("destroy() emits nothing even with a selection box active", () => {
+    inputHandler["selectionBoxActive"] = true;
+    const emit = vi.spyOn(eventBus, "emit");
+
+    inputHandler.destroy();
+
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it("drops in-flight pointer state on destroy()", () => {
+    touchOrMouseDown(inputHandler, "mouse");
+    inputHandler.destroy();
+
+    expect(inputHandler["pointerDown"]).toBe(false);
+    expect(inputHandler["pointers"].size).toBe(0);
+    expect(inputHandler["selectionBoxActive"]).toBe(false);
+    expect(inputHandler["multiSelectionActive"]).toBe(false);
+  });
+
+  it("clears the pan/zoom interval on destroy()", () => {
+    vi.useFakeTimers();
+    const handler = makeHandler(
+      document.createElement("canvas"),
+      new EventBus(),
+    );
+    try {
+      handler.initialize();
+      expect(vi.getTimerCount()).toBe(1);
+
+      handler.destroy();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      handler.destroy();
+      vi.useRealTimers();
+    }
+  });
+
+  it("a second initialize() does not orphan the first listeners or interval", () => {
+    vi.useFakeTimers();
+    const bus = new EventBus();
+    const handler = makeHandler(document.createElement("canvas"), bus);
+    // The bus captures this field's value at initialize() time, so swapping
+    // it first lets us count how many times the subscription is registered.
+    const onUnitSelection = vi.fn();
+    handler["onUnitSelection"] = onUnitSelection;
+    try {
+      handler.initialize();
+      handler.initialize();
+      expect(vi.getTimerCount()).toBe(1);
+
+      bus.emit(
+        new UnitSelectionEvent({ id: () => 1 } as unknown as UnitView, true),
+      );
+      expect(onUnitSelection).toHaveBeenCalledTimes(1);
+
+      handler.destroy();
+      expect(vi.getTimerCount()).toBe(0);
+
+      onUnitSelection.mockClear();
+      bus.emit(
+        new UnitSelectionEvent({ id: () => 1 } as unknown as UnitView, true),
+      );
+      expect(onUnitSelection).not.toHaveBeenCalled();
+
+      const emit = vi.spyOn(bus, "emit");
+      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape" }));
+      expect(emit).not.toHaveBeenCalled();
+    } finally {
+      handler.destroy();
+      vi.useRealTimers();
+    }
   });
 });

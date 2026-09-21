@@ -47,7 +47,7 @@ import { RailNetwork } from "./RailNetwork";
 import { createRailNetwork } from "./RailNetworkImpl";
 import { Stats } from "./Stats";
 import { StatsImpl } from "./StatsImpl";
-import { assignTeams } from "./TeamAssignment";
+import { assignTeams, resolveTeamsList } from "./TeamAssignment";
 import { TerraNulliusImpl } from "./TerraNulliusImpl";
 import { UnitGrid, UnitPredicate } from "./UnitGrid";
 import { WaterManager } from "./WaterManager";
@@ -95,6 +95,10 @@ export class GameImpl implements Game {
 
   private updates: GameUpdates = createGameUpdatesMap();
   private tileUpdatePairs: number[] = [];
+  /** [smallID, tilesOwned, gold, troops] quads — see PlayerImpl.toUpdate. */
+  private playerStatsQuads: number[] = [];
+  /** [smallID, direction, index, troops] quads — see packAttackTroopDeltas. */
+  private attackTroopsQuads: number[] = [];
   private motionPlanRecords: MotionPlanRecord[] = [];
   private planDrivenUnitIds = new Set<number>();
   private unitGrid: UnitGrid;
@@ -112,6 +116,8 @@ export class GameImpl implements Game {
   private _waterManager: WaterManager;
   private _sharedWaterCache: SharedWaterCache;
   private _teamGameSpawnAreas: TeamGameSpawnAreas | undefined;
+  /** Tiles from nuke blast radii this tick, drained by the renderer. */
+  private _nukeImpactQueue: TileRef[] = [];
 
   constructor(
     private _humans: PlayerInfo[],
@@ -147,45 +153,11 @@ export class GameImpl implements Game {
   }
 
   private populateTeams() {
-    let numPlayerTeams = this._config.playerTeams();
-
-    // HumansVsNations mode always has exactly 2 teams
-    if (numPlayerTeams === HumansVsNations) {
-      this.playerTeams = [ColoredTeams.Humans, ColoredTeams.Nations];
-      return;
-    }
-
-    if (typeof numPlayerTeams !== "number") {
-      const players = this._humans.length + this._nations.length;
-      switch (numPlayerTeams) {
-        case Duos:
-          numPlayerTeams = Math.ceil(players / 2);
-          break;
-        case Trios:
-          numPlayerTeams = Math.ceil(players / 3);
-          break;
-        case Quads:
-          numPlayerTeams = Math.ceil(players / 4);
-          break;
-        default:
-          throw new Error(`Unknown TeamCountConfig ${numPlayerTeams}`);
-      }
-    }
-    if (numPlayerTeams < 2) {
-      throw new Error(`Too few teams: ${numPlayerTeams}`);
-    } else if (numPlayerTeams < 8) {
-      this.playerTeams = [ColoredTeams.Red, ColoredTeams.Blue];
-      if (numPlayerTeams >= 3) this.playerTeams.push(ColoredTeams.Yellow);
-      if (numPlayerTeams >= 4) this.playerTeams.push(ColoredTeams.Green);
-      if (numPlayerTeams >= 5) this.playerTeams.push(ColoredTeams.Purple);
-      if (numPlayerTeams >= 6) this.playerTeams.push(ColoredTeams.Orange);
-      if (numPlayerTeams >= 7) this.playerTeams.push(ColoredTeams.Teal);
-    } else {
-      this.playerTeams = [];
-      for (let i = 1; i <= numPlayerTeams; i++) {
-        this.playerTeams.push(`Team ${i}`);
-      }
-    }
+    const totalPlayers = this._humans.length + this._nations.length;
+    this.playerTeams = resolveTeamsList(
+      this._config.playerTeams(),
+      totalPlayers,
+    );
   }
 
   private addPlayers() {
@@ -208,7 +180,13 @@ export class GameImpl implements Game {
       ...this._humans,
       ...this._nations.map((n) => n.playerInfo),
     ];
-    const playerToTeam = assignTeams(allPlayers, this.playerTeams);
+    const pt = this._config.playerTeams();
+    const isDuosTriosQuads = pt === Duos || pt === Trios || pt === Quads;
+    const playerToTeam = assignTeams(
+      allPlayers,
+      this.playerTeams,
+      isDuosTriosQuads,
+    );
     for (const [playerInfo, team] of playerToTeam.entries()) {
       if (team === "kicked") {
         console.warn(`Player ${playerInfo.name} was kicked from team`);
@@ -256,6 +234,7 @@ export class GameImpl implements Game {
     if (this._map.hasFallout(tile)) {
       return;
     }
+    this._territoryVersion++;
     this._map.setFallout(tile, value);
     this.recordTileUpdate(tile);
   }
@@ -269,6 +248,7 @@ export class GameImpl implements Game {
     if (this._map.hasFallout(tile)) {
       this._map.setFallout(tile, false);
     }
+    this._territoryVersion++;
     this._map.setWater(tile);
     this.recordTileUpdate(tile);
   }
@@ -285,19 +265,98 @@ export class GameImpl implements Game {
     this._waterManager.queueTile(tile);
   }
 
+  queueNukeImpact(tile: TileRef): void {
+    this._nukeImpactQueue.push(tile);
+  }
+
+  drainNukeImpacts(): TileRef[] {
+    const tiles = this._nukeImpactQueue;
+    this._nukeImpactQueue = [];
+    return tiles;
+  }
+
   unit(id: number): Unit | undefined {
     return this._unitMap.get(id);
   }
 
-  units(...types: UnitType[]): Unit[] {
-    return Array.from(this._players.values()).flatMap((p) => p.units(...types));
+  units(): Unit[];
+  units(types: readonly UnitType[]): Unit[];
+  units(type: UnitType, type2?: UnitType, type3?: UnitType): Unit[];
+  units(
+    first?: UnitType | readonly UnitType[],
+    second?: UnitType,
+    third?: UnitType,
+  ): Unit[] {
+    // Built as a single flat array per call; per-player intermediate arrays
+    // would churn the heap (player.units() with no args is allocation-free).
+    const out: Unit[] = [];
+    if (Array.isArray(first) && (first as readonly UnitType[]).length > 0) {
+      const ts = new Set(first as readonly UnitType[]);
+      for (const p of this._players.values()) {
+        for (const u of p.units()) {
+          if (ts.has(u.type())) out.push(u);
+        }
+      }
+      return out;
+    }
+    if (first === undefined || Array.isArray(first)) {
+      for (const p of this._players.values()) {
+        for (const u of p.units()) {
+          out.push(u);
+        }
+      }
+      return out;
+    }
+    if (second === undefined) {
+      const type = first as UnitType;
+      // Single-type query: every nation asks for e.g. all transport ships on
+      // every tick, and walking every player's unit list each time was ~3 %
+      // of a headless game. The memo is exact — it is invalidated by any
+      // unit list change — and callers get their own copy.
+      const memo = this.unitsByTypeMemo.get(type);
+      if (memo !== undefined && memo.version === this._unitsVersion) {
+        return memo.units.slice();
+      }
+      for (const p of this._players.values()) {
+        for (const u of p.units()) {
+          if (u.type() === type) out.push(u);
+        }
+      }
+      this.unitsByTypeMemo.set(type, {
+        version: this._unitsVersion,
+        units: out,
+      });
+      return out.slice();
+    }
+    for (const p of this._players.values()) {
+      for (const u of p.units()) {
+        const t = u.type();
+        if (t === first || t === second || t === third) {
+          out.push(u);
+        }
+      }
+    }
+    return out;
   }
 
+  // Level-weighted count of one unit type across every player. Every port asked
+  // for the trade-ship count every tick, and the walk over every player's unit
+  // list was ~3.5 % of a long headless game. Memoised on the units version, which
+  // moves on any unit list change and on every level-up (UnitImpl.increaseLevel).
+  private readonly unitCountMemo = new Map<
+    UnitType,
+    { version: number; count: number }
+  >();
   unitCount(type: UnitType): number {
+    const memo = this.unitCountMemo.get(type);
+    if (memo !== undefined && memo.version === this._unitsVersion) {
+      return memo.count;
+    }
     let total = 0;
     for (const player of this._players.values()) {
       total += player.unitCount(type);
     }
+    this.unitCountMemo.set(type, { version: this._unitsVersion, count: total });
     return total;
   }
 
@@ -364,6 +423,8 @@ export class GameImpl implements Game {
     );
     (alliance.requestor() as PlayerImpl)._alliances.push(alliance);
     (alliance.recipient() as PlayerImpl)._alliances.push(alliance);
+    this.stats().allianceFormed(requestor);
+    this.stats().allianceFormed(recipient);
     (request.requestor() as PlayerImpl).pastOutgoingAllianceRequests.push(
       request,
     );
@@ -451,7 +512,21 @@ export class GameImpl implements Game {
     this.execs.push(...inited);
     this.unInitExecs = unInited;
     for (const player of this._players.values()) {
-      const update = player.toUpdate();
+      // Sampled before toUpdate so the reading is of the tick that just ran.
+      // Dead and unspawned players are skipped: an eliminated player's fall
+      // to zero tiles would otherwise register as a total collapse.
+      if (player.isAlive() && player.hasSpawned()) {
+        this.stats().recordTickSample(
+          player,
+          player.numTilesOwned(),
+          player.troops(),
+          player.alliances().length,
+        );
+      }
+      const update = player.toUpdate(
+        this.playerStatsQuads,
+        this.attackTroopsQuads,
+      );
       if (update !== null) this.addUpdate(update);
     }
     if (this.ticks() % 10 === 0) {
@@ -486,6 +561,22 @@ export class GameImpl implements Game {
       packed[i] = pairs[i];
     }
     pairs.length = 0;
+    return packed;
+  }
+
+  drainPackedPlayerUpdates(): Float64Array | null {
+    const quads = this.playerStatsQuads;
+    if (quads.length === 0) return null;
+    const packed = Float64Array.from(quads);
+    quads.length = 0;
+    return packed;
+  }
+
+  drainPackedAttackUpdates(): Float64Array | null {
+    const quads = this.attackTroopsQuads;
+    if (quads.length === 0) return null;
+    const packed = Float64Array.from(quads);
+    quads.length = 0;
     return packed;
   }
 
@@ -671,15 +762,21 @@ export class GameImpl implements Game {
     if (!this.isLand(tile)) {
       throw Error(`cannot conquer water`);
     }
+    if (this.isImpassable(tile)) {
+      throw Error(`cannot conquer impassable terrain`);
+    }
     const previousOwner = this.owner(tile) as TerraNullius | PlayerImpl;
     if (previousOwner.isPlayer()) {
       previousOwner._lastTileChange = this._ticks;
+      previousOwner._tileChangeVersion++;
       previousOwner._tiles.delete(tile);
       previousOwner._borderTiles.delete(tile);
     }
+    this._territoryVersion++;
     this._map.setOwnerID(tile, owner.smallID());
     owner._tiles.add(tile);
     owner._lastTileChange = this._ticks;
+    owner._tileChangeVersion++;
     this.updateBorders(tile);
     this._map.setFallout(tile, false);
     this.recordTileUpdate(tile);
@@ -695,9 +792,11 @@ export class GameImpl implements Game {
 
     const previousOwner = this.owner(tile) as PlayerImpl;
     previousOwner._lastTileChange = this._ticks;
+    previousOwner._tileChangeVersion++;
     previousOwner._tiles.delete(tile);
     previousOwner._borderTiles.delete(tile);
 
+    this._territoryVersion++;
     this._map.setOwnerID(tile, 0);
     this.updateBorders(tile);
     this.recordTileUpdate(tile);
@@ -746,9 +845,19 @@ export class GameImpl implements Game {
         `${breaker} not allied with ${other}, cannot break alliance`,
       );
     }
+    const duration = this._ticks - alliance.createdAt();
     if (!other.isTraitor() && !other.isDisconnected()) {
       breaker.markTraitor();
+      // Only a real betrayal counts as being betrayed. Gated on the same
+      // condition as markTraitor so that a teammate dropping their connection
+      // is not recorded as having stabbed anyone in the back.
+      this.stats().allianceEnded(other, duration, "brokenByOther");
+    } else {
+      this.stats().allianceEnded(other, duration, null);
     }
+    // The breaker's side is already counted by betray(); this call is only
+    // here so their longest-held maximum still sees this alliance.
+    this.stats().allianceEnded(breaker, duration, null);
 
     this.detachAlliance(alliance);
 
@@ -771,7 +880,11 @@ export class GameImpl implements Game {
         `cannot expire alliance: must have exactly one alliance, have ${alliances.length}`,
       );
     }
-    this.detachAlliance(alliances[0]);
+    const expiring = alliances[0];
+    const duration = this._ticks - expiring.createdAt();
+    this.stats().allianceEnded(expiring.requestor(), duration, "expired");
+    this.stats().allianceEnded(expiring.recipient(), duration, "expired");
+    this.detachAlliance(expiring);
     this.addUpdate({
       type: GameUpdateType.AllianceExpired,
       player1ID: alliance.requestor().smallID(),
@@ -782,7 +895,19 @@ export class GameImpl implements Game {
   public removeAlliancesByPlayerSilently(player: Player): void {
     // Snapshot — detachAlliance reassigns the player's _alliances as it goes.
     const removed = [...(player as PlayerImpl)._alliances];
-    for (const alliance of removed) this.detachAlliance(alliance);
+    for (const alliance of removed) {
+      // Elimination is the fourth way an alliance ends, and in practice the
+      // commonest. Nobody betrayed and nothing expired, so no counter moves;
+      // the null counter is here purely so both sides' longest-held maximum
+      // still sees the alliance. Without this the survivor's longest held
+      // would silently read 0 from an alliance that ran the whole game, and
+      // recordAlliancesAtEnd cannot pick it up either — by then it is
+      // already detached.
+      const duration = this._ticks - alliance.createdAt();
+      this.stats().allianceEnded(alliance.requestor(), duration, null);
+      this.stats().allianceEnded(alliance.recipient(), duration, null);
+      this.detachAlliance(alliance);
+    }
   }
 
   /** Remove an alliance from both participants' per-player alliance lists. */
@@ -826,11 +951,25 @@ export class GameImpl implements Game {
     });
   }
 
-  setWinner(winner: Player | Team, allPlayersStats: AllPlayersStats): void {
+  setWinner(
+    winner: Player | Team | null,
+    allPlayersStats: AllPlayersStats,
+  ): void {
     this._winner = winner;
+    // OFM: snapshot final tiles for standings (bots skipped in recordFinalTiles).
+    for (const player of this.players()) {
+      this.stats().recordFinalTiles(player, player.numTilesOwned());
+      const standing = player.alliances();
+      let longest = 0;
+      for (const a of standing) {
+        const held = this._ticks - a.createdAt();
+        if (held > longest) longest = held;
+      }
+      this.stats().recordAlliancesAtEnd(player, standing.length, longest);
+    }
     this.addUpdate({
       type: GameUpdateType.Win,
-      winner: this.makeWinner(winner),
+      winner: winner === null ? undefined : this.makeWinner(winner),
       allPlayersStats,
     });
   }
@@ -839,26 +978,35 @@ export class GameImpl implements Game {
     return this._winner;
   }
 
-  private makeWinner(winner: string | Player): Winner | undefined {
+  private isEligibleForTeamWin(
+    p: Player,
+    team: string,
+    threshold: number,
+  ): boolean {
+    if (p.team() !== team || p.clientID() === null || !p.hasSpawned()) {
+      return false;
+    }
+    if (!p.isDisconnected()) return true;
+    const snap = p.disconnectSnapshot();
+    if (!snap || !snap.wasAlive) return true;
+    return (
+      snap.totalLand > 0 && 10 * snap.teamTiles >= threshold * snap.totalLand
+    );
+  }
+
+  makeWinner(winner: string | Player): Winner | undefined {
     if (typeof winner === "string") {
+      const threshold = this._config.teamLandShareWinThresholdTenths();
       return [
         "team",
         winner,
-        ...this.players()
-          .filter((p) => p.team() === winner && p.clientID() !== null)
+        ...this.allPlayers()
+          .filter((p) => this.isEligibleForTeamWin(p, winner, threshold))
           .map((p) => p.clientID()!),
       ];
-    } else {
-      const clientId = winner.clientID();
-      if (clientId === null) {
-        return ["nation", winner.name()];
-      }
-      return [
-        "player",
-        clientId,
-        // TODO: Assists (vote for peace)
-      ];
     }
+    const clientId = winner.clientID();
+    return clientId === null ? ["nation", winner.name()] : ["player", clientId];
   }
 
   teams(): Team[] {
@@ -866,6 +1014,18 @@ export class GameImpl implements Game {
       return [];
     }
     return [this.botTeam, ...this.playerTeams];
+  }
+
+  teamTilesOwned(team: Team): number {
+    let teamTiles = 0;
+    for (const p of this.allPlayers()) {
+      if (p.team() === team) teamTiles += p.numTilesOwned();
+    }
+    return teamTiles;
+  }
+
+  totalLandTiles(): number {
+    return Math.max(0, this.numLandTiles() - this.numTilesWithFallout());
   }
 
   teamSpawnArea(team: Team): SpawnArea | undefined {
@@ -953,11 +1113,32 @@ export class GameImpl implements Game {
     });
   }
 
+  // Bumped whenever any player's unit list changes (build, delete, capture);
+  // keys the units(type) memo below.
+  private _unitsVersion = 0;
+  private readonly unitsByTypeMemo = new Map<
+    UnitType,
+    { version: number; units: Unit[] }
+  >();
+  bumpUnitsVersion(): void {
+    this._unitsVersion++;
+  }
+
+  // Bumped on every change of tile ownership, fallout or land/water — i.e.
+  // anything Player.nearby() can observe — so per-player answers can be memoised
+  // for as long as nothing on the map moved.
+  private _territoryVersion = 0;
+  territoryVersion(): number {
+    return this._territoryVersion;
+  }
+
   addUnit(u: Unit) {
+    this._unitsVersion++;
     this.unitGrid.addUnit(u);
     this._unitMap.set(u.id(), u);
   }
   removeUnit(u: Unit) {
+    this._unitsVersion++;
     this.unitGrid.removeUnit(u);
     this._unitMap.delete(u.id());
     this.planDrivenUnitIds.delete(u.id());
@@ -1046,11 +1227,17 @@ export class GameImpl implements Game {
   numLandTiles(): number {
     return this._map.numLandTiles();
   }
+  waterVersion(): number {
+    return this._map.waterVersion();
+  }
   isValidCoord(x: number, y: number): boolean {
     return this._map.isValidCoord(x, y);
   }
   isLand(ref: TileRef): boolean {
     return this._map.isLand(ref);
+  }
+  isImpassable(ref: TileRef): boolean {
+    return this._map.isImpassable(ref);
   }
   isOceanShore(ref: TileRef): boolean {
     return this._map.isOceanShore(ref);
@@ -1086,6 +1273,7 @@ export class GameImpl implements Game {
     return this._map.hasOwner(ref);
   }
   setOwnerID(ref: TileRef, playerId: number): void {
+    this._territoryVersion++;
     return this._map.setOwnerID(ref, playerId);
   }
   hasFallout(ref: TileRef): boolean {
@@ -1103,6 +1291,9 @@ export class GameImpl implements Game {
   }
   neighbors4(ref: TileRef, out: TileRef[]): number {
     return this._map.neighbors4(ref, out);
+  }
+  neighbors8(ref: TileRef, out: TileRef[]): number {
+    return this._map.neighbors8(ref, out);
   }
   isWater(ref: TileRef): boolean {
     return this._map.isWater(ref);
@@ -1171,6 +1362,9 @@ export class GameImpl implements Game {
   hasWaterComponent(tile: TileRef, component: number): boolean {
     return this._waterManager.hasWaterComponent(tile, component);
   }
+  getWaterComponentSize(tile: TileRef): number | null {
+    return this._waterManager.getWaterComponentSize(tile);
+  }
   sharedWaterComponents(player: Player): Set<number> | null {
     return this._sharedWaterCache.get(player);
   }
@@ -1209,6 +1403,8 @@ export class GameImpl implements Game {
         {
           name: conquered.displayName(),
         },
+        undefined,
+        conquered.id(),
       );
     } else {
       this.displayMessage(
@@ -1220,6 +1416,8 @@ export class GameImpl implements Game {
           gold: renderNumber(goldCaptured),
           name: conquered.displayName(),
         },
+        undefined,
+        conquered.id(),
       );
       conqueror.addGold(goldCaptured);
       conquered.removeGold(gold);
@@ -1227,6 +1425,23 @@ export class GameImpl implements Game {
       // Record stats
       this.stats().goldWar(conqueror, conquered, goldCaptured);
     }
+
+    // OFM: per-kill log for standings (humans-only filtered in recordKill).
+    this.stats().recordKill(conqueror, conquered, this.ticks());
+    // OFM live standings: attribute the elimination so the live snapshot can
+    // credit the kill (null when the conqueror has no client, e.g. a bot/nation),
+    // and stamp the finishing place NOW rather than deferring to PlayerExecution:
+    // if the game ends this tick (winner declared) the conquered player's
+    // execution may never run again. Exclude the conquered player from the alive
+    // count. PlayerExecution keeps the same stamp as a fallback for non-conquest
+    // deaths; recordDeathPosition is first-write-wins, so this value sticks.
+    this.stats().recordKilledBy(conquered, conqueror.clientID());
+    this.stats().recordDeathPosition(
+      conquered,
+      this.players().filter(
+        (p) => p !== conquered && p.type() !== PlayerType.Bot,
+      ).length + 1,
+    );
 
     this.addUpdate({
       type: GameUpdateType.ConquestEvent,

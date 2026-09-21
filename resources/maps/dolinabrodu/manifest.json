@@ -1,5 +1,5 @@
 {
-  "categories": ["other"],
+  "categories": ["fictional"],
   "id": "DolinaBrodu",
   "map": {
     "height": 704,
@@ -70,5 +70,6 @@
       "name": "Osada Bobrów"
     }
   ],
+  "themes": ["hexah"],
   "translation_key": "map.dolinabrodu"
 }

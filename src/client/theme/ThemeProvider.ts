@@ -1,10 +1,12 @@
 import { Colord, colord, LabaColor } from "colord";
-import { PlayerType, Team } from "../../core/game/Game";
+import { ColoredTeams, PlayerType, Team } from "../../core/game/Game";
 import { UserSettings } from "../../core/game/UserSettings";
 import { simpleHash } from "../../core/Util";
 import { ClientEnv } from "../ClientEnv";
+import { PALETTE_NAMES } from "../render/gl/GraphicsOverrides";
 import {
   createThemeSettings,
+  ThemeName,
   ThemeSettings,
 } from "../render/gl/RenderSettings";
 import { PlayerView } from "../view";
@@ -80,23 +82,33 @@ export function buildTeamPalettes(
  */
 export class SettingsTheme implements Theme {
   private humanColorAllocator: ColorAllocator;
-  private botColorAllocator: ColorAllocator;
   private nationColorAllocator: ColorAllocator;
+  private classicBotColorAllocator: ColorAllocator;
   private teamPalettes: Map<Team, Colord[]>;
   private teamPlayerColors = new Map<string, Colord>();
+
+  /**
+   * When true, teamless tribes draw from the classic (pre-v34) bot pool
+   * instead of the flat Bot team color. Kept in sync with the
+   * classicBotColors graphics override by ThemeProvider.current().
+   */
+  useClassicBotColors = false;
 
   private _focusedBorderColor: Colord;
   private _spawnHighlightColor: Colord;
 
   constructor(private settings: ThemeSettings) {
     const humanColors = settings.humanColors.map(colord);
-    const botColors = settings.botColors.map(colord);
     const nationColors = settings.nationColors.map(colord);
+    const classicBotColors = settings.classicBotColors.map(colord);
     const fallbackColors = settings.fallbackColors.map(colord);
 
     this.humanColorAllocator = new ColorAllocator(humanColors, fallbackColors);
-    this.botColorAllocator = new ColorAllocator(botColors, botColors);
     this.nationColorAllocator = new ColorAllocator(nationColors, nationColors);
+    this.classicBotColorAllocator = new ColorAllocator(
+      classicBotColors,
+      classicBotColors,
+    );
     this.teamPalettes = buildTeamPalettes(settings);
 
     this._focusedBorderColor = colord(settings.focusedBorderColor);
@@ -136,8 +148,8 @@ export class SettingsTheme implements Theme {
 
   /**
    * Color for a player's territory: a per-player variation when the player is
-   * on a team, otherwise a distinct color allocated from the matching pool
-   * (human / bot / nation).
+   * on a team, the flat Bot team color for tribes, otherwise a distinct color
+   * allocated from the matching pool (human / nation).
    */
   territoryColor(player: PlayerView): Colord {
     const team = player.team();
@@ -148,7 +160,11 @@ export class SettingsTheme implements Theme {
       return this.humanColorAllocator.assignColor(player.id());
     }
     if (player.type() === PlayerType.Bot) {
-      return this.botColorAllocator.assignColor(player.id());
+      if (this.useClassicBotColors) {
+        return this.classicBotColorAllocator.assignColor(player.id());
+      }
+      // Tribes use the same palette in every mode: the flat Bot team color.
+      return this.teamColorForPlayer(ColoredTeams.Bot, player.id());
     }
     return this.nationColorAllocator.assignColor(player.id());
   }
@@ -260,22 +276,20 @@ export class SettingsTheme implements Theme {
  */
 class ThemeProvider {
   private readonly userSettings = new UserSettings();
-  private defaultTheme = new SettingsTheme(createThemeSettings("default"));
-  private colorblind = new SettingsTheme(createThemeSettings("colorblind"));
-  private fantasy = new SettingsTheme(createThemeSettings("fantasy"));
+  private themes = createThemes();
 
-  /**
-   * The active theme. Colorblind mode (an accessibility need) wins over the
-   * fantasy reskin; the fantasy theme is selected by the FANTASY_THEME env flag.
-   */
+  /** The active theme, selected from the palette graphics override. */
   current(): Theme {
-    if (this.userSettings.graphicsOverrides().accessibility?.colorblind) {
-      return this.colorblind;
-    }
-    if (ClientEnv.fantasyTheme()) {
-      return this.fantasy;
-    }
-    return this.defaultTheme;
+    const overrides = this.userSettings.graphicsOverrides();
+    // Hexah fork: with no palette chosen, the fantasy build renders in its
+    // own palette. An explicit choice (colorblind is an accessibility need)
+    // still wins.
+    const chosen = overrides.palette ?? "default";
+    const name =
+      chosen === "default" && ClientEnv.fantasyTheme() ? "fantasy" : chosen;
+    const theme = this.themes[name];
+    theme.useClassicBotColors = overrides.classicBotColors ?? false;
+    return theme;
   }
 
   /**
@@ -284,10 +298,15 @@ class ThemeProvider {
    * colour-pool depletion across games in a single session.
    */
   reset(): void {
-    this.defaultTheme = new SettingsTheme(createThemeSettings("default"));
-    this.colorblind = new SettingsTheme(createThemeSettings("colorblind"));
-    this.fantasy = new SettingsTheme(createThemeSettings("fantasy"));
+    this.themes = createThemes();
   }
+}
+
+function createThemes(): Record<ThemeName, SettingsTheme> {
+  const names: ThemeName[] = [...PALETTE_NAMES, "fantasy"];
+  return Object.fromEntries(
+    names.map((name) => [name, new SettingsTheme(createThemeSettings(name))]),
+  ) as Record<ThemeName, SettingsTheme>;
 }
 
 export const themeProvider = new ThemeProvider();

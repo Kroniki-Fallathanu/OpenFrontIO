@@ -80,7 +80,11 @@ export class HexahVictoryCheck {
 
   private report(): VictoryCheckReport {
     const myPlayer = this.game.myPlayer();
-    const requiredPercent = this.game.config().percentageTilesOwnedToWin();
+    // Upstream lets the bar decay in overtime, so the threshold is read for
+    // the current moment of the battle, not as a constant.
+    const requiredPercent = this.game
+      .config()
+      .percentageTilesOwnedToWin(this.game.elapsedGameSeconds());
     const landTiles =
       this.game.numLandTiles() - this.game.numTilesWithFallout();
     const ownedPercent =

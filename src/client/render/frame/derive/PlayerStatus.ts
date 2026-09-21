@@ -37,6 +37,12 @@ export interface ComputePlayerStatusOptions {
    * Predicate testing if the local player considers `sid` a transitive target.
    */
   isTransitiveTarget?: (sid: number) => boolean;
+  /**
+   * Ticks a side must be below the bar before it drains (doomsday clock). Past
+   * this the skull holds steady instead of blinking. Omit to treat any flagged
+   * side as draining.
+   */
+  doomsdayClockWarnTicks?: number;
 }
 
 /**
@@ -74,43 +80,60 @@ export function computePlayerStatus(
     }
   }
 
+  // Nukes: single pass over units → per-owner flags (avoids the
+  // O(players × units) scan of checking every unit per player).
+  // Shown during replay too, except the nukeTargetsMe flag.
+  const nukeActiveOwners = new Set<number>();
+  const nukeTargetsMeOwners = new Set<number>();
+  for (const u of units.values()) {
+    if (!u.isActive || !NUKE_ACTIVE_TYPES.has(u.unitType)) continue;
+    nukeActiveOwners.add(u.ownerID);
+    if (
+      localPlayerSmallID > 0 &&
+      tileState !== undefined &&
+      u.targetTile !== null &&
+      (tileState[u.targetTile] & OWNER_MASK) === localPlayerSmallID
+    ) {
+      nukeTargetsMeOwners.add(u.ownerID);
+    }
+  }
+
   for (const ps of players.values()) {
     if (!ps.isAlive) continue;
     const sid = ps.smallID;
     const crown = sid === crownSmallID;
     const traitor = ps.isTraitor;
     const disconnected = ps.isDisconnected;
+    const inDoomsdayClock = ps.inDoomsdayClock;
+    // Past the warn grace the side is actively bleeding troops; the skull holds
+    // steady then (vs blinking while merely in danger).
+    const doomsdayClockUnderTicks =
+      (opts.tick ?? 0) - ps.markedDoomsdayClockTick;
+    const doomsdayClockWarnTicks = opts.doomsdayClockWarnTicks ?? 0;
+    const doomsdayClockDraining =
+      inDoomsdayClock && doomsdayClockUnderTicks >= doomsdayClockWarnTicks;
+    // Red, static skull. From the sim — see PlayerImpl.isDecaying.
+    const doomsdayClockDecaying = inDoomsdayClock && ps.isDecaying;
+    // How far through the warn countdown (0->1); the danger skull blinks faster
+    // as this nears 1, i.e. as the side approaches draining.
+    const doomsdayClockWarnProgress =
+      inDoomsdayClock && doomsdayClockWarnTicks > 0
+        ? Math.max(
+            0,
+            Math.min(1, doomsdayClockUnderTicks / doomsdayClockWarnTicks),
+          )
+        : 0;
     const traitorRemainingTicks = ps.traitorRemainingTicks;
 
     // Relative flags
-    let nukeActive = false;
-    let nukeTargetsMe = false;
+    const nukeActive = nukeActiveOwners.has(sid);
+    const nukeTargetsMe = nukeTargetsMeOwners.has(sid);
     let alliance = false;
     let target = false;
     let embargo = false;
     let allianceReq = false;
     let allianceFraction = 0;
     let allianceRemainingTicks = 0;
-
-    // Nukes: show during replay too, except the nukeTargetsMe flag
-    for (const u of units.values()) {
-      if (
-        u.ownerID === sid &&
-        u.isActive &&
-        NUKE_ACTIVE_TYPES.has(u.unitType)
-      ) {
-        nukeActive = true;
-        if (
-          localPlayerSmallID > 0 &&
-          tileState !== undefined &&
-          u.targetTile !== null &&
-          (tileState[u.targetTile] & OWNER_MASK) === localPlayerSmallID
-        ) {
-          nukeTargetsMe = true;
-        }
-        if (nukeTargetsMe) break;
-      }
-    }
 
     // Flags which are only meaningful when there's a local player,
     // and we're not looking at the local player itself.
@@ -153,6 +176,7 @@ export function computePlayerStatus(
       crown ||
       traitor ||
       disconnected ||
+      inDoomsdayClock ||
       traitorRemainingTicks > 0 ||
       nukeActive ||
       alliance ||
@@ -165,6 +189,10 @@ export function computePlayerStatus(
         crown,
         traitor,
         disconnected,
+        inDoomsdayClock,
+        doomsdayClockDraining,
+        doomsdayClockDecaying,
+        doomsdayClockWarnProgress,
         alliance,
         allianceReq,
         target,

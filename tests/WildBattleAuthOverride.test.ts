@@ -6,6 +6,7 @@ import {
   getPlayToken,
   sanitizeBattlePlayerName,
 } from "../src/client/Auth";
+import { MAX_USERNAME_LENGTH } from "../src/core/validations/username";
 
 function setHash(hash: string): void {
   window.location.hash = hash;
@@ -85,7 +86,9 @@ describe("battlePlayerNameOverride — embedded Hexah character name", () => {
   });
 
   test("clamps names longer than the username limit", () => {
-    expect(sanitizeBattlePlayerName("A".repeat(40))).toBe("A".repeat(27));
+    expect(sanitizeBattlePlayerName("A".repeat(40))).toBe(
+      "A".repeat(MAX_USERNAME_LENGTH),
+    );
   });
 
   test("returns null when nothing valid remains", () => {

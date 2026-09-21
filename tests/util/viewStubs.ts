@@ -58,6 +58,7 @@ export function stubConfig(overrides: Partial<Config> = {}): Config {
     disableAlliances: () => false,
     allianceDuration: () => 100,
     deletionMarkDuration: () => 300,
+    doomsdayClockConfig: () => ({ warnSeconds: 15 }),
     nukeMagnitudes: () => ({ inner: 0, outer: 0 }),
     nukeAllianceBreakThreshold: () => 0,
     userSettings: () => ({}),
@@ -117,6 +118,8 @@ export function makePlayerUpdate(
     clientID: "client-a",
     name: "Alice",
     displayName: "Alice",
+    clanTag: null,
+    nationFlag: null,
     id: "player-a",
     smallID: 1,
     playerType: PlayerType.Human,
@@ -124,10 +127,20 @@ export function makePlayerUpdate(
     isDisconnected: false,
     tilesOwned: 0,
     gold: 0n,
+    tradeGold: 0n,
+    trainGold: 0n,
+    piracyGold: 0n,
+    goldEarned: 0n,
     troops: 100,
     allies: [],
     embargoes: new Set(),
     isTraitor: false,
+    // Doomsday-clock state. Present here so the diffPlayerUpdate field-coverage
+    // walk in GameUpdateUtils.test.ts reaches these: a field missing from this
+    // stub is a field that walk cannot check.
+    inDoomsdayClock: false,
+    markedDoomsdayClockTick: -1,
+    isDecaying: false,
     targets: [],
     outgoingEmojis: [],
     outgoingAttacks: [],
@@ -204,7 +217,9 @@ export function makeEmptyGu(
     tick,
     updates,
     packedTileUpdates: new Uint32Array(0),
-    playerNameViewData: {},
+    // playerNameViewData deliberately absent — production omits it on every
+    // tick between placement rebuilds, so the stub default must exercise the
+    // absent path. Tests that need placements set it explicitly.
     ...overrides,
   };
 }

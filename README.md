@@ -121,13 +121,13 @@ npm run dev:prod
   npm run format
   ```
 
-- **Lint code**:
+- **Lint code with Oxlint and ESLint**:
 
   ```bash
   npm run lint
   ```
 
-- **Lint and fix code**:
+- **Lint and fix code with Oxlint and ESLint**:
 
   ```bash
   npm run lint:fix
@@ -144,6 +144,7 @@ npm run dev:prod
 - `/src/core` - Deterministic game simulation
 - `/src/server` - Backend game server
 - `/resources` - Static assets (images, maps, etc.)
+- `/zbin` - Compact binary wire format for zod schemas (self-contained, zod-only)
 
 ## 🤝 Contributing
 

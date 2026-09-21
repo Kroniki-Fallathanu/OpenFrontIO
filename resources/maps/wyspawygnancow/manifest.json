@@ -1,5 +1,5 @@
 {
-  "categories": ["other"],
+  "categories": ["fictional"],
   "id": "WyspaWygnancow",
   "map": {
     "height": 832,
@@ -70,5 +70,6 @@
       "name": "Osada Bobrów"
     }
   ],
+  "themes": ["hexah"],
   "translation_key": "map.wyspawygnancow"
 }

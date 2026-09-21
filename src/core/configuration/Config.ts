@@ -1,10 +1,12 @@
 import { z } from "zod";
 import { PlayerView } from "../../client/view";
 import { AssetManifest } from "../AssetUrls";
+import { ClusterConfig } from "../ClusterConfig";
+import { exp, log, pow, pow2 } from "../DetMath";
+import { DoomsdayClockSpeed } from "../game/DoomsdayClock";
 import {
   Difficulty,
   Game,
-  GameMode,
   GameType,
   Gold,
   Player,
@@ -13,10 +15,10 @@ import {
   TerrainType,
   TerraNullius,
   Tick,
+  Unit,
   UnitInfo,
   UnitType,
 } from "../game/Game";
-import { TileRef } from "../game/GameMap";
 import { UserSettings } from "../game/UserSettings";
 import { GameConfig, TeamCountConfig } from "../Schemas";
 import { NukeType } from "../StatsSchemas";
@@ -24,15 +26,42 @@ import { assertNever, sigmoid, toInt, within } from "../Util";
 
 declare global {
   interface Window {
+    // Values the page carries into the bundle. Every field is optional to
+    // TypeScript because the page is data, not code; ClientEnv.get() decides
+    // which are actually required. Only gitCommit, gameEnv, turnstileSiteKey
+    // and jwtAudience are: they describe the ENVIRONMENT, and are identical
+    // for every player on a site. Everything below them names a SERVER, and
+    // a static page (docs/MultiServer.md, "Server list v2") carries none of
+    // it — the API's list answers instead.
     BOOTSTRAP_CONFIG?: {
       gitCommit?: string;
       assetManifest?: AssetManifest;
       cdnBase?: string;
       gameEnv?: string;
+      // The fleet map + which entry served this page (docs/MultiServer.md).
+      // Absent on a static page.
+      cluster?: ClusterConfig;
+      instanceLetter?: string;
+      // Legacy scalar, still injected by desktop shells that predate the
+      // cluster map. Web shells send cluster/instanceLetter instead; a static
+      // page sends neither.
       numWorkers?: number;
       turnstileSiteKey?: string;
       jwtAudience?: string;
+      // Environment-scoped like turnstileSiteKey, but optional: a deployment
+      // without one (dev, desktop shells) just keeps the inline Stripe flow
+      // off.
+      stripePublishableKey?: string;
+      // The rendering server's own id. Absent on a static page, which no
+      // server rendered; ClientEnv.instanceId() then answers "".
       instanceId?: string;
+      // Desktop-only: explicit game-server host for the WebSocket origin.
+      // Absent on the web build (client falls back to same-origin location).
+      serverHost?: string;
+      // The load-balancer apex this deployment sits behind; absent for
+      // standalone deployments (beta, branch previews, dev), desktop, and
+      // static pages.
+      siteHost?: string;
       externalApiDisabled?: boolean;
       fantasyTheme?: boolean;
       adsDisabled?: boolean;
@@ -59,13 +88,104 @@ export function parseGameEnv(value: string | undefined): GameEnv {
   }
 }
 
+export interface AttackLogicInput {
+  terrain: TerrainType;
+  attackTroops: number;
+  attacker: { type: PlayerType; numTiles: number };
+  /** null when attacking terra nullius. */
+  defender: {
+    type: PlayerType;
+    numTiles: number;
+    troops: number;
+    isTraitor: boolean;
+    /** Defender is disconnected and on the attacker's team. */
+    isDisconnectedTeammate: boolean;
+  } | null;
+  /** A defense post owned by the defender is in range of the tile. */
+  defenderHasDefensePost: boolean;
+  /** Fraction of land tiles with fallout, or null if the tile has no fallout. */
+  falloutRatio: number | null;
+  /** Tiles on the attack front this tick (plus jitter); fixed for the tick. */
+  borderSize: number;
+}
+
+export interface AttackLogicResult {
+  attackerTroopLoss: number;
+  defenderTroopLoss: number;
+  /**
+   * Share of this tick's conquest budget the tile consumes. An attack keeps
+   * conquering tiles until the fractions sum to 1, so a tile costing 0.1
+   * means about ten such tiles per tick.
+   */
+  tickFraction: number;
+}
+
 export interface NukeMagnitude {
   inner: number;
   outer: number;
 }
 
-const DEFENSE_DEBUFF_MIDPOINT = 150_000;
-const DEFENSE_DEBUFF_DECAY_RATE = Math.LN2 / 50000;
+// attackLogic tunables
+const LARGE_TERRITORY_MIDPOINT = 300_000;
+const LARGE_TERRITORY_STEEPNESS = 2.5;
+// Floors: a huge attacker's bonus bottoms at 0.3x (losses; speed uses the
+// deeper LARGE_ATTACKER_SPEED_DEPTH below), a huge defender's at 0.7x.
+const LARGE_ATTACKER_DEPTH = 0.7;
+const LARGE_DEFENDER_DEPTH = 0.3;
+const BOT_DEFENDER_LOSS_MULT = 0.7;
+const TERRA_NULLIUS_COST_SCALE = 2000;
+const TERRA_NULLIUS_MIN_COST = 5;
+const TERRA_NULLIUS_MAX_COST = 100;
+// Attacker loss = mag * clampedRatio * (BASE * largeAttackerBonus + DENSITY * troopsPerTile).
+// BASE is the old 0.48 ratio weight times the 0.965 large-defender sigmoid
+// tail that every defender used to get. DENSITY sets which stack size pays
+// the old 0.0052 density weight: at 0.0039 a stack of 3/4 the defender's
+// army matches the old cost, bigger stacks pay less, smaller pay more.
+const ATTACKER_LOSS_BASE = 0.463;
+const ATTACKER_LOSS_PER_DENSITY = 0.0039;
+// Speed divisor: 8.25 / 0.965, absorbing the same sigmoid tail. 8.25 is the
+// old 7.5 raised ~10%: v34 pace feedback said attacks felt a bit too slow, so
+// every player-vs-player attack lands ~10% faster across the board.
+const SPEED_COST_DIVISOR = 8.55;
+// Speed-only: the attacker's territory bonus runs a touch deeper for speed
+// than the 0.7 loss depth above (floor 0.27x vs 0.3x). Paired with the 0.82
+// sub-parity floor on the ratio curve, an overwhelming push lands ~18%
+// faster for a small attacker, ~20% at the 300k midpoint, ~25% for giants.
+const LARGE_ATTACKER_SPEED_DEPTH = 0.73;
+
+/**
+ * Logistic in log(tiles): ~1 for small territories, easing down to
+ * 1 - depth for huge ones, halfway at LARGE_TERRITORY_MIDPOINT.
+ */
+function largeTerritoryBonus(numTiles: number, depth: number): number {
+  return (
+    1 -
+    depth *
+      sigmoid(
+        log(numTiles),
+        LARGE_TERRITORY_STEEPNESS,
+        log(LARGE_TERRITORY_MIDPOINT),
+      )
+  );
+}
+
+function terrainAttackBase(terrain: TerrainType): {
+  mag: number;
+  tileCost: number;
+} {
+  switch (terrain) {
+    case TerrainType.Plains:
+      return { mag: 80, tileCost: 16.5 };
+    case TerrainType.Highland:
+      return { mag: 100, tileCost: 20 };
+    case TerrainType.Mountain:
+      return { mag: 120, tileCost: 25 };
+    case TerrainType.Impassable:
+      throw new Error(`impassable terrain cannot be attacked`);
+    default:
+      throw new Error(`terrain type ${terrain} not supported`);
+  }
+}
 const DEFAULT_SPAWN_IMMUNITY_TICKS = 5 * 10;
 
 export const JwksSchema = z.object({
@@ -83,16 +203,85 @@ export const JwksSchema = z.object({
 /** SAM launcher construction duration in ticks (non-instant-build). */
 export const SAM_CONSTRUCTION_TICKS = 30 * 10;
 
+// Doomsday Clock tunables (anti-stall). Off unless enabled in GameConfig.
+// Times in seconds. The required map share rises in waves (levels + times in
+// DoomsdayClock.ts, chosen by `speed`). A side caught below the bar gets a
+// warnSeconds cooldown ("Danger, decay in Xs"), then troops bleed DOWN TO A
+// FLOOR (drainFloorPercent of max), not to zero: the warn (30s) + the linear
+// drain (~90s from full troops, sooner with fewer troops or a shrinking
+// territory) make ~2 minutes from caught to the floor. A doomed side is crippled
+// to 5% of max, not eliminated, so a brief dip below the bar is recoverable (the
+// drain stops the moment it climbs back); the rising bar still guarantees a
+// finish by squeezing territory and leaving the doomed side easy to conquer.
+const DOOMSDAY_CLOCK_DEFAULTS = {
+  enabled: false,
+  speed: "normal" as DoomsdayClockSpeed,
+  warnSeconds: 30, // cooldown (the flashing danger cue) before decay begins
+  drainStartPercent: 2, // starts bleeding at once (already beats troop income)
+  drainMaxPercent: 5,
+  drainRampSeconds: 90, // ramps LINEARLY to the max over this long
+  drainFloorPercent: 5, // drain settles here: crippled to 5% of max, never wiped
+  // The floor decays start -> drainFloorPercent over floorDecaySeconds, leaving
+  // one comeback window with a usable army. It must not be permanent: maxTroops is
+  // sublinear (~100k at one tile), so a fixed 40% is ~40k troops on a single tile.
+  floorStartPercent: 40,
+  floorDecaySeconds: 90,
+  // TERRITORY ROT — the finisher, since the drain never kills. rotDeathSeconds is
+  // a DEADLINE, not a rate: the territory is gone this long after the skull
+  // appeared, whatever it holds. 0 disables rot. Timeline:
+  //
+  //   0s    skull blinks, warn countdown
+  //   30s   skull steady, troops draining              (warnSeconds)
+  //   120s  floor at 5%, territory rotting, skull RED  (warn + floorDecay)
+  //   150s  nothing left, eliminated                   (rotDeathSeconds)
+  rotDeathSeconds: 150,
+  // Grainy opening: pinholes across this share of the territory before the holes
+  // grow together. Held to a third of the rot window, so shortening the window
+  // shortens this too: at 20s the speckle WAS the death rather than its opening.
+  rotGrainSeconds: 10,
+  rotSpecklePercent: 15,
+  // Warships bleed on their OWN gentler start + a STEEP (convex) ramp to a much
+  // higher ceiling. A ship caught when its side is first doomed lasts about as
+  // long as troops (the low start + no income ≈ the troop net rate), but the rate
+  // curves up sharply (warshipDrainCurveExponent), so once a side has been under
+  // the clock the full ramp, ships drop to the same floor in ~2s (50%/s), not
+  // sunk. Ships only.
+  warshipDrainStartPercent: 1,
+  warshipDrainMaxPercent: 50,
+  warshipDrainCurveExponent: 8, // >1 = convex: stays gentle early, then spikes
+};
+
+// Share of the land a side must hold to win, in every game mode.
+const PERCENT_TILES_OWNED_TO_WIN = 80;
+
+// Overtime tunables (anti-stalemate). Off unless enabled in GameConfig.
+// After startMinutes the percentage of tiles required to win falls from the
+// base by dropPercentPerMinute, with no floor: the bar keeps sinking until the
+// leading side crosses it, so a stalled game always ends. Only `enabled` and
+// `startMinutes` are wire-configurable.
+const OVERTIME_DEFAULTS = {
+  enabled: false,
+  startMinutes: 30,
+  dropPercentPerMinute: 2,
+};
+
 export class Config {
   private unitInfoCache = new Map<UnitType, UnitInfo>();
   constructor(
     private _gameConfig: GameConfig,
     private _userSettings: UserSettings | null,
     private _isReplay: boolean,
+    public readonly listed: boolean = false,
+    private _spectator: boolean = false,
   ) {}
 
   isReplay(): boolean {
     return this._isReplay;
+  }
+
+  /** True when the player joined the lobby as a spectator (watch-only). */
+  isIntentionalSpectator(): boolean {
+    return this._spectator;
   }
 
   traitorDefenseDebuff(): number {
@@ -103,6 +292,45 @@ export class Config {
   }
   traitorDuration(): number {
     return 30 * 10; // 30 seconds
+  }
+
+  teamLandShareWinThresholdTenths(): number {
+    return 7;
+  }
+
+  // Doomsday Clock config, resolved against defaults. One read per tick.
+  doomsdayClockConfig(): typeof DOOMSDAY_CLOCK_DEFAULTS {
+    const c = this._gameConfig.doomsdayClock;
+    const d = DOOMSDAY_CLOCK_DEFAULTS;
+    return {
+      enabled: c?.enabled ?? d.enabled,
+      speed: c?.speed ?? d.speed,
+      // Drain/warn tuning is internal (not wire-configurable): always defaults.
+      warnSeconds: d.warnSeconds,
+      drainStartPercent: d.drainStartPercent,
+      drainMaxPercent: d.drainMaxPercent,
+      drainRampSeconds: d.drainRampSeconds,
+      drainFloorPercent: d.drainFloorPercent,
+      floorStartPercent: d.floorStartPercent,
+      floorDecaySeconds: d.floorDecaySeconds,
+      rotDeathSeconds: d.rotDeathSeconds,
+      rotGrainSeconds: d.rotGrainSeconds,
+      rotSpecklePercent: d.rotSpecklePercent,
+      warshipDrainStartPercent: d.warshipDrainStartPercent,
+      warshipDrainMaxPercent: d.warshipDrainMaxPercent,
+      warshipDrainCurveExponent: d.warshipDrainCurveExponent,
+    };
+  }
+  // Overtime config, resolved against defaults.
+  overtimeConfig(): typeof OVERTIME_DEFAULTS {
+    const c = this._gameConfig.overtime;
+    const d = OVERTIME_DEFAULTS;
+    return {
+      enabled: c?.enabled ?? d.enabled,
+      startMinutes: c?.startMinutes ?? d.startMinutes,
+      // The drop rate is internal (not wire-configurable): always the default.
+      dropPercentPerMinute: d.dropPercentPerMinute,
+    };
   }
   spawnImmunityDuration(): Tick {
     return (
@@ -180,7 +408,12 @@ export class Config {
     return this._gameConfig.disableNavMesh ?? false;
   }
   disableAlliances(): boolean {
-    return this._gameConfig.disableAlliances ?? false;
+    // customAllianceDuration === 0 disables alliances (the "custom alliances"
+    // control at 0). The legacy boolean is still honored for older configs.
+    return (
+      this._gameConfig.customAllianceDuration === 0 ||
+      (this._gameConfig.disableAlliances ?? false)
+    );
   }
   waterNukes(): boolean {
     return this._gameConfig.waterNukes ?? false;
@@ -210,11 +443,41 @@ export class Config {
     return this.startingGoldFor(playerInfo);
   }
 
-  trainSpawnRate(numPlayerFactories: number): number {
+  /**
+   * Global spawn throttle for the train economy, counted in Train *units*
+   * (~7 per train: engine, tail, 5 cars). Up to 1.5x spawns for the very
+   * first trains, ~1x around 35 units (~5 trains), then a capacity
+   * sigmoid damps spawning past the ~560-unit midpoint. The damping
+   * flattens onto a ~0.25 plateau past ~810 units (~115 trains), so a big
+   * enough rail economy still scales at a quarter of the un-damped rate,
+   * until a global hard cap far beyond any normal game collapses the
+   * plateau past ~900 units (~130 trains).
+   *
+   * The midpoint was 300 units in v34.0. Public-game telemetry put a real
+   * lobby at ~4.2 train units per player, so a 50-player game sat at ~210
+   * units and a 70-player game at ~300 — i.e. normal lobbies were landing
+   * on and past the knee, costing factories 35-56% of their v33 income.
+   * The 61-nation benchmark this curve was tuned against peaks at 91 units,
+   * roughly a quarter of a full public lobby, so it never saw that region.
+   * v34.5 moved it to 500 (measured +32% train gold in matched lobbies);
+   * 560 softens the remaining early/mid-game gap vs v33 (~-8% at 50
+   * players, ~-18% at 80) without re-opening v33's big-lobby train
+   * dominance, and leaves the plateau and hard cap untouched.
+   */
+  trainSaturation(numTrainUnits: number): number {
+    const boost = 1 + 0.5 * exp(-numTrainUnits / 30);
+    const damping = 1 - sigmoid(numTrainUnits, Math.LN2 / 100, 560);
+    const plateau = 0.25 * (1 - sigmoid(numTrainUnits, Math.LN2 / 150, 900));
+    return boost * Math.max(damping, plateau);
+  }
+
+  trainSpawnRate(numPlayerFactories: number, numTrainUnits: number): number {
     // hyperbolic decay, midpoint at 10 factories
     // expected number of trains = numPlayerFactories  / trainSpawnRate(numPlayerFactories)
-    return (numPlayerFactories + 10) * 15;
+    const rate = (numPlayerFactories + 10) * 15;
+    return Math.max(1, Math.floor(rate / this.trainSaturation(numTrainUnits)));
   }
+
   trainGold(
     rel: "self" | "team" | "ally" | "other",
     citiesVisited: number,
@@ -247,15 +510,39 @@ export class Config {
     return 110;
   }
   railroadMaxSize(): number {
-    return this.trainStationMaxRange();
+    return this.trainStationMaxRange() * 1.4142;
   }
 
   tradeShipGold(dist: number, player: Player | PlayerView): Gold {
     // Sigmoid: concave start, sharp S-curve middle, linear end - heavily punishes trades under range debuff.
     const debuff = this.tradeShipShortRangeDebuff();
-    const baseGold =
-      75_000 / (1 + Math.exp(-0.03 * (dist - debuff))) + 50 * dist;
+    const baseGold = 75_000 / (1 + exp(-0.03 * (dist - debuff))) + 50 * dist;
     return BigInt(Math.floor(baseGold * this.goldMultiplierFor(player)));
+  }
+
+  /**
+   * Global spawn throttle for the trade-ship economy. A mild ~1.45x odds
+   * boost while the world fleet is small (the pity timer square-roots the
+   * realized effect, so ~1.2x actual spawns), held through the opening
+   * trading minutes and crossing the old un-boosted curve around 110
+   * ships, then a capacity sigmoid damps spawning past the ~330-ship
+   * midpoint. The damping flattens onto a 0.25 plateau past ~415 ships
+   * (~half cadence per port after the pity timer), so heavy port
+   * investment keeps scaling income linearly, until a global hard cap far
+   * beyond any normal game collapses the plateau past ~800 at sea.
+   *
+   * The midpoint was 230 in v34.0. v33's was 400, so fleets of 150-350 —
+   * reached within the opening minutes of a 40+ player lobby — ran 30-64%
+   * below v33's spawn odds, which is where the "no early gold for nukes"
+   * deficit lived; the opening (<130 ships) was already above v33 via the
+   * boost. 330 restores that window to near-v33 while the plateau keeps
+   * everything past ~450 ships (the late game) numerically unchanged.
+   */
+  tradeShipSaturation(numTradeShips: number): number {
+    const boost = 1 + 0.45 * exp(-numTradeShips / 120);
+    const damping = 1 - sigmoid(numTradeShips, Math.LN2 / 50, 330);
+    const plateau = 0.25 * (1 - sigmoid(numTradeShips, Math.LN2 / 100, 800));
+    return boost * Math.max(damping, plateau);
   }
 
   // Probability of trade ship spawn = 1 / tradeShipSpawnRate
@@ -263,15 +550,15 @@ export class Config {
     tradeShipSpawnRejections: number,
     numTradeShips: number,
   ): number {
-    const decayRate = Math.LN2 / 50;
-
-    // Approaches 0 as numTradeShips increase
-    const baseSpawnRate = 1 - sigmoid(numTradeShips, decayRate, 400);
-
     // Pity timer: increases spawn chance after consecutive rejections
     const rejectionModifier = 1 / (tradeShipSpawnRejections + 1);
 
-    return Math.floor((100 * rejectionModifier) / baseSpawnRate);
+    return Math.max(
+      1,
+      Math.floor(
+        (100 * rejectionModifier) / this.tradeShipSaturation(numTradeShips),
+      ),
+    );
   }
 
   unitInfo(type: UnitType): UnitInfo {
@@ -310,8 +597,7 @@ export class Config {
       case UnitType.Port:
         info = {
           cost: this.costWrapper(
-            (numUnits: number) =>
-              Math.min(1_000_000, Math.pow(2, numUnits) * 125_000),
+            (numUnits: number) => Math.min(1_000_000, pow2(numUnits) * 125_000),
             UnitType.Port,
             UnitType.Factory,
           ),
@@ -384,8 +670,7 @@ export class Config {
       case UnitType.City:
         info = {
           cost: this.costWrapper(
-            (numUnits: number) =>
-              Math.min(1_000_000, Math.pow(2, numUnits) * 125_000),
+            (numUnits: number) => Math.min(1_000_000, pow2(numUnits) * 125_000),
             UnitType.City,
           ),
           constructionDuration: this.instantBuild() ? 0 : 2 * 10,
@@ -395,8 +680,7 @@ export class Config {
       case UnitType.Factory:
         info = {
           cost: this.costWrapper(
-            (numUnits: number) =>
-              Math.min(1_000_000, Math.pow(2, numUnits) * 125_000),
+            (numUnits: number) => Math.min(1_000_000, pow2(numUnits) * 125_000),
             UnitType.Factory,
             UnitType.Port,
           ),
@@ -471,8 +755,8 @@ export class Config {
   private costWrapper(
     costFn: (units: number) => number,
     ...types: UnitType[]
-  ): (g: Game, p: Player) => bigint {
-    return (game: Game, player: Player) => {
+  ): (g: Game, p: Player, extraUnits?: number) => bigint {
+    return (game: Game, player: Player, extraUnits: number = 0) => {
       if (
         player.type() === PlayerType.Human &&
         this.hasInfiniteGoldFor(player)
@@ -485,7 +769,7 @@ export class Config {
           Math.min(player.unitsOwned(type), player.unitsConstructed(type)),
         0,
       );
-      return BigInt(costFn(numUnits));
+      return BigInt(costFn(numUnits + extraUnits));
     };
   }
 
@@ -527,6 +811,10 @@ export class Config {
     return 30 * 10;
   }
   allianceDuration(): Tick {
+    // Host can set a custom alliance duration in minutes (1-15); 0 disables
+    // alliances (see disableAlliances). Falls back to the 5 minute default.
+    const m = this._gameConfig.customAllianceDuration;
+    if (typeof m === "number" && m > 0) return m * 60 * 10;
     return 300 * 10; // 5 minutes.
   }
   temporaryEmbargoDuration(): Tick {
@@ -536,11 +824,25 @@ export class Config {
     return 30;
   }
 
-  percentageTilesOwnedToWin(): number {
-    if (this._gameConfig.gameMode === GameMode.Team) {
-      return 95;
+  percentageTilesOwnedToWin(elapsedGameSeconds: number): number {
+    const base = PERCENT_TILES_OWNED_TO_WIN;
+    const sd = this.overtimeConfig();
+    if (!sd.enabled) {
+      return base;
     }
-    return 80;
+    // Whole seconds only: elapsedGameSeconds is ticks/10 and can carry a
+    // fractional part. The bar moves in WHOLE percentage points (one step
+    // every 60/dropPercentPerMinute seconds), so the HUD shows exactly the
+    // integer the sim checks — and integer math is trivially deterministic.
+    const secondsPastStart =
+      Math.floor(elapsedGameSeconds) - sd.startMinutes * 60;
+    if (secondsPastStart <= 0) {
+      return base;
+    }
+    return Math.max(
+      0,
+      base - Math.floor((secondsPastStart * sd.dropPercentPerMinute) / 60),
+    );
   }
   armyLimitWarningThreshold(): number {
     return 0.8;
@@ -558,150 +860,116 @@ export class Config {
     if (this.isRandomSpawn()) {
       return 150;
     }
-    return 300;
+    return 200;
   }
   numBots(): number {
     return this.bots();
   }
 
-  attackLogic(
-    gm: Game,
-    attackTroops: number,
-    attacker: Player,
-    defender: Player | TerraNullius,
-    tileToConquer: TileRef,
-  ): {
-    attackerTroopLoss: number;
-    defenderTroopLoss: number;
-    tilesPerTickUsed: number;
-  } {
-    let mag;
-    let speed;
-    const type = gm.terrainType(tileToConquer);
-    switch (type) {
-      case TerrainType.Plains:
-        mag = 80;
-        speed = 16.5;
-        break;
-      case TerrainType.Highland:
-        mag = 100;
-        speed = 20;
-        break;
-      case TerrainType.Mountain:
-        mag = 120;
-        speed = 25;
-        break;
-      default:
-        throw new Error(`terrain type ${type} not supported`);
+  /**
+   * Per-tile attack outcome. Pure: depends only on the given input and this
+   * config's tunables, never on Game/Player objects. AttackExecution gathers
+   * the input from the simulation.
+   *
+   * Two base values come from the terrain and are scaled by the situation:
+   *  - `mag`: how bloody the tile is (drives attacker troop loss)
+   *  - `tileCost`: how expensive the tile is to take (higher = slower)
+   *
+   * Speed: each tick the attack can take about `borderSize` tiles worth of
+   * budget; each tile consumes `tileCost`, scaled by how outnumbered the
+   * attack is. The result reports that as a fraction of the tick.
+   */
+  attackLogic(input: AttackLogicInput): AttackLogicResult {
+    const { attackTroops, attacker, defender } = input;
+    let { mag, tileCost } = terrainAttackBase(input.terrain);
+
+    if (defender !== null && input.defenderHasDefensePost) {
+      mag *= this.defensePostDefenseBonus();
+      tileCost *= this.defensePostSpeedBonus();
     }
-    if (defender.isPlayer()) {
-      for (const dp of gm.nearbyUnits(
-        tileToConquer,
-        gm.config().defensePostRange(),
-        UnitType.DefensePost,
-      )) {
-        if (dp.unit.owner() === defender) {
-          mag *= this.defensePostDefenseBonus();
-          speed *= this.defensePostSpeedBonus();
-          break;
-        }
-      }
+    if (input.falloutRatio !== null) {
+      const fallout = this.falloutDefenseModifier(input.falloutRatio);
+      mag *= fallout;
+      tileCost *= fallout;
     }
 
-    if (gm.hasFallout(tileToConquer)) {
-      const falloutRatio = gm.numTilesWithFallout() / gm.numLandTiles();
-      mag *= this.falloutDefenseModifier(falloutRatio);
-      speed *= this.falloutDefenseModifier(falloutRatio);
-    }
-
-    if (attacker.isPlayer() && defender.isPlayer()) {
-      if (defender.isDisconnected() && attacker.isOnSameTeam(defender)) {
-        // No troop loss if defender is disconnected and on same team
-        mag = 0;
-      }
-      if (
-        (attacker.type() === PlayerType.Human ||
-          attacker.type() === PlayerType.Nation) &&
-        defender.type() === PlayerType.Bot
-      ) {
-        mag *= 0.7;
-      }
-    }
-
-    if (defender.isPlayer()) {
-      const defenseSig =
-        1 -
-        sigmoid(
-          defender.numTilesOwned(),
-          DEFENSE_DEBUFF_DECAY_RATE,
-          DEFENSE_DEBUFF_MIDPOINT,
-        );
-
-      const largeDefenderSpeedDebuff = 0.7 + 0.3 * defenseSig;
-      const largeDefenderAttackDebuff = 0.7 + 0.3 * defenseSig;
-
-      let largeAttackBonus = 1;
-      if (attacker.numTilesOwned() > 100_000) {
-        largeAttackBonus = Math.sqrt(100_000 / attacker.numTilesOwned()) ** 0.7;
-      }
-      let largeAttackerSpeedBonus = 1;
-      if (attacker.numTilesOwned() > 100_000) {
-        largeAttackerSpeedBonus = (100_000 / attacker.numTilesOwned()) ** 0.6;
-      }
-
-      const defenderTroopLoss = defender.troops() / defender.numTilesOwned();
-      const traitorMod = defender.isTraitor() ? this.traitorDefenseDebuff() : 1;
-      const currentAttackerLoss =
-        within(defender.troops() / attackTroops, 0.6, 2) *
-        mag *
-        0.8 *
-        largeDefenderAttackDebuff *
-        largeAttackBonus *
-        traitorMod;
-      const altAttackerLoss =
-        1.3 * defenderTroopLoss * (mag / 100) * traitorMod;
-      const attackerTroopLoss =
-        0.6 * currentAttackerLoss + 0.4 * altAttackerLoss;
-
+    if (defender === null) {
+      const tickBudget = input.borderSize * 2;
       return {
-        attackerTroopLoss,
-        defenderTroopLoss,
-        tilesPerTickUsed:
-          within(defender.troops() / (5 * attackTroops), 0.2, 1.5) *
-          speed *
-          largeDefenderSpeedDebuff *
-          largeAttackerSpeedBonus *
-          (defender.isTraitor() ? this.traitorSpeedDebuff() : 1),
-      };
-    } else {
-      return {
-        attackerTroopLoss:
-          attacker.type() === PlayerType.Bot ? mag / 10 : mag / 5,
+        attackerTroopLoss: mag / (attacker.type === PlayerType.Bot ? 10 : 5),
         defenderTroopLoss: 0,
-        tilesPerTickUsed: within(
-          (2000 * Math.max(10, speed)) / attackTroops,
-          5,
-          100,
-        ),
+        tickFraction:
+          within(
+            (TERRA_NULLIUS_COST_SCALE * tileCost) / attackTroops,
+            TERRA_NULLIUS_MIN_COST,
+            TERRA_NULLIUS_MAX_COST,
+          ) / tickBudget,
       };
     }
-  }
 
-  attackTilesPerTick(
-    attackTroops: number,
-    attacker: Player,
-    defender: Player | TerraNullius,
-    numAdjacentTilesWithEnemy: number,
-  ): number {
-    if (defender.isPlayer()) {
-      return (
-        within(((5 * attackTroops) / defender.troops()) * 2, 0.01, 0.5) *
-        numAdjacentTilesWithEnemy *
-        3
-      );
-    } else {
-      return numAdjacentTilesWithEnemy * 2;
+    if (defender.isDisconnectedTeammate) {
+      // No troop loss if defender is disconnected and on same team
+      mag = 0;
     }
+    if (
+      (attacker.type === PlayerType.Human ||
+        attacker.type === PlayerType.Nation) &&
+      defender.type === PlayerType.Bot
+    ) {
+      mag *= BOT_DEFENDER_LOSS_MULT;
+    }
+
+    // Big territories are cheaper and faster to attack from and into, so
+    // late games stay dynamic. The attacker's bonus is the stronger one.
+    const largeAttackerBonus = largeTerritoryBonus(
+      attacker.numTiles,
+      LARGE_ATTACKER_DEPTH,
+    );
+    const largeDefenderBonus = largeTerritoryBonus(
+      defender.numTiles,
+      LARGE_DEFENDER_DEPTH,
+    );
+
+    const traitorLossMod = defender.isTraitor ? this.traitorDefenseDebuff() : 1;
+    const traitorCostMod = defender.isTraitor ? this.traitorSpeedDebuff() : 1;
+
+    // Defender loses its average troops-per-tile.
+    const defenderTroopLoss = defender.troops / defender.numTiles;
+
+    // Two ratios drive the attacker's loss: how outnumbered the attack is
+    // (defender army / attack stack, clamped: bigger pushes pay less per
+    // tile) scales a cost made of a base plus the defender's troop density
+    // (packed land is expensive, spread-thin land is cheap).
+    const troopRatio = defender.troops / attackTroops;
+    const attackerTroopLoss =
+      mag *
+      traitorLossMod *
+      within(troopRatio, 0.6, 2) *
+      (ATTACKER_LOSS_BASE * largeAttackerBonus * largeDefenderBonus +
+        ATTACKER_LOSS_PER_DENSITY * defenderTroopLoss);
+
+    // Speed: a tile's cost in tick-fractions grows with how outnumbered the
+    // attack is. Floored at 0.82 below parity (overwhelming stacks land ~18%
+    // faster), then rising linearly (saturating at 7.5x), with a second ramp
+    // for hopeless attacks past 20x.
+    const speedCost =
+      (within(troopRatio, 0.82, 7.5) * within(troopRatio / 20, 1, 50)) /
+      SPEED_COST_DIVISOR;
+    const largeAttackerSpeedBonus = largeTerritoryBonus(
+      attacker.numTiles,
+      LARGE_ATTACKER_SPEED_DEPTH,
+    );
+    return {
+      attackerTroopLoss,
+      defenderTroopLoss,
+      tickFraction:
+        (speedCost *
+          tileCost *
+          largeAttackerSpeedBonus *
+          largeDefenderBonus *
+          traitorCostMod) /
+        input.borderSize,
+    };
   }
 
   boatAttackAmount(attacker: Player, defender: Player | TerraNullius): number {
@@ -757,7 +1025,7 @@ export class Config {
     const maxTroops =
       player.type() === PlayerType.Human && this.hasInfiniteTroopsFor(player)
         ? 1_000_000_000
-        : 2 * (Math.pow(player.numTilesOwned(), 0.6) * 1000 + 50000) +
+        : 2 * (pow(player.numTilesOwned(), 0.6) * 1000 + 50000) +
           player
             .units(UnitType.City)
             .filter((u) => !u.isUnderConstruction())
@@ -790,7 +1058,7 @@ export class Config {
   troopIncreaseRate(player: Player | PlayerView): number {
     const max = this.maxTroops(player);
 
-    let toAdd = 10 + Math.pow(player.troops(), 0.73) / 4;
+    let toAdd = 10 + pow(player.troops(), 0.73) / 4;
 
     const ratio = 1 - player.troops() / max;
     toAdd *= ratio;
@@ -848,8 +1116,21 @@ export class Config {
     return 100;
   }
 
-  defaultNukeSpeed(): number {
-    return 8;
+  nukeSpeed(unitType: UnitType): number {
+    switch (unitType) {
+      case UnitType.AtomBomb:
+      case UnitType.HydrogenBomb:
+        return 10;
+      case UnitType.MIRV:
+        return 15;
+      case UnitType.MIRVWarhead:
+        return 22;
+    }
+    throw new Error(`Unknown nuke type: ${unitType}`);
+  }
+
+  mirvNormalizeTargetTicks(): number {
+    return 14;
   }
 
   defaultNukeTargetableRange(): number {
@@ -867,6 +1148,25 @@ export class Config {
 
   maxSamRange(): number {
     return 150;
+  }
+
+  samUpgradeDuration(): number {
+    return Math.floor(this.SAMCooldown() / 2);
+  }
+
+  dynamicSamRange(sam: Unit, currentTick: number): number {
+    const state = sam.samLauncherState();
+    if (state === undefined || state.upgradeStartTick === undefined) {
+      return this.samRange(sam.level());
+    }
+    const duration = state.duration ?? this.samUpgradeDuration();
+    const elapsed = currentTick - state.upgradeStartTick;
+    if (elapsed >= duration) {
+      return this.samRange(state.targetLevel);
+    }
+    const targetRange = this.samRange(state.targetLevel);
+    const diff = targetRange - state.startRange;
+    return state.startRange + (diff * elapsed) / duration;
   }
 
   defaultSamMissileSpeed(): number {
@@ -889,7 +1189,7 @@ export class Config {
 
     const steepness = 2;
     const normalizedExcess = excessTroops / maxTroops;
-    return scalingFactor * (1 - Math.exp(-steepness * normalizedExcess));
+    return scalingFactor * (1 - exp(-steepness * normalizedExcess));
   }
 
   structureMinDist(): number {
@@ -920,8 +1220,10 @@ export class Config {
     return 5;
   }
 
-  warshipRetreatHealthThreshold(): number {
-    return 750;
+  /** Health at or below which a warship retreats to repair, as a percent of its
+   *  (veterancy-adjusted) max health, so the threshold scales with max health. */
+  warshipRetreatHealthPercent(): number {
+    return 75;
   }
 
   warshipPassiveHealing(): number {
@@ -934,6 +1236,35 @@ export class Config {
 
   warshipPortSwitchThreshold(): number {
     return 0.75;
+  }
+
+  // --- Warship veterancy ---
+
+  /** Maximum veterancy level a warship can reach. */
+  warshipMaxVeterancy(): number {
+    return 3;
+  }
+
+  /** Max-health boost per veterancy level, as an integer percent of base max
+   *  health. Integer-only to keep src/core deterministic (no float constants). */
+  warshipVeterancyHealthBonus(): number {
+    return 20;
+  }
+
+  /** Shell-damage boost per veterancy level, as an integer percent of the
+   *  rolled damage. Integer-only to keep src/core deterministic. */
+  warshipVeterancyShellDamageBonus(): number {
+    return 20;
+  }
+
+  /** Transport ships a warship must destroy to gain one veterancy level. */
+  warshipVeterancyTransportKills(): number {
+    return 10;
+  }
+
+  /** Trade ships a warship must capture to gain one veterancy level. */
+  warshipVeterancyTradeCaptures(): number {
+    return 25;
   }
 
   defensePostShellAttackRate(): number {

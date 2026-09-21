@@ -1,5 +1,5 @@
 {
-  "categories": ["europe", "north_america"],
+  "categories": ["europe", "north_america", "asia"],
   "id": "Arctic",
   "map": {
     "height": 1828,
@@ -240,5 +240,6 @@
       "name": "France"
     }
   ],
+  "themes": ["europe", "asia", "north_america"],
   "translation_key": "map.arctic"
 }

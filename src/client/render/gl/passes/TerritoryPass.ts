@@ -12,11 +12,10 @@
  * uploads across render frames.
  */
 
-import type { TilePair } from "../../types";
 import type { RenderSettings } from "../RenderSettings";
 import { getPaletteSize } from "../utils/ColorUtils";
 import { createMapQuad, createProgram, shaderSrc } from "../utils/GlUtils";
-import { TILE_DEFINES } from "../utils/TileCodec";
+import { FALLOUT_BIT, OWNER_MASK, TILE_DEFINES } from "../utils/TileCodec";
 
 import overlayVertSrc from "../shaders/map-overlay/overlay.vert.glsl?raw";
 import territoryFragSrc from "../shaders/map-overlay/territory.frag.glsl?raw";
@@ -43,6 +42,7 @@ export class TerritoryPass {
   private uDefenseDarken: WebGLUniformLocation;
   private uSaturation: WebGLUniformLocation;
   private uTerritoryAlpha: WebGLUniformLocation;
+  private uAltFillAlpha: WebGLUniformLocation;
   private highlightOwner = 0;
   private isTeamMode = false;
 
@@ -56,13 +56,20 @@ export class TerritoryPass {
   private skinAnchorTex: WebGLTexture;
   private defenseCoverageTex: WebGLTexture | null = null;
   private borderTex: WebGLTexture | null = null;
+  private affiliationTex: WebGLTexture | null = null;
 
   private altView = false;
-  private showPatterns = true;
 
   /** CPU-side tile state — what is currently on the GPU (display state). */
   private cpuTileState: Uint16Array;
   private tilesDirty = false;
+
+  /**
+   * True when a tile's fallout bit flipped since the last consume (or a full
+   * state replacement happened, which may contain fallout). The renderer uses
+   * this to activate the heat-decay pass only while fallout is in play.
+   */
+  private falloutTouched = false;
 
   /**
    * True after a full state replacement (initial load / seek). flushTileTexture
@@ -82,7 +89,9 @@ export class TerritoryPass {
    * incrementally repaint affected tiles instead of rebuilding the whole map.
    * Wired by the renderer to `borderPass.patchTile`.
    */
-  private borderPatchConsumer: ((x: number, y: number) => void) | null = null;
+  private borderPatchConsumer:
+    | ((x: number, y: number, prevOwner: number, newOwner: number) => void)
+    | null = null;
 
   /**
    * Drip buckets — round-robin staggering of tile updates across render frames.
@@ -172,6 +181,7 @@ export class TerritoryPass {
       this.program,
       "uTerritoryAlpha",
     )!;
+    this.uAltFillAlpha = gl.getUniformLocation(this.program, "uAltFillAlpha")!;
 
     gl.useProgram(this.program);
     gl.uniform1i(gl.getUniformLocation(this.program, "uTileTex"), 0);
@@ -183,6 +193,7 @@ export class TerritoryPass {
     gl.uniform1i(gl.getUniformLocation(this.program, "uSkinAnchor"), 6);
     gl.uniform1i(gl.getUniformLocation(this.program, "uDefenseCoverageTex"), 7);
     gl.uniform1i(gl.getUniformLocation(this.program, "uBorderTex"), 8);
+    gl.uniform1i(gl.getUniformLocation(this.program, "uAffiliation"), 9);
 
     this.vao = createMapQuad(gl, mapW, mapH);
 
@@ -200,6 +211,7 @@ export class TerritoryPass {
     this.scatter.clear();
     this.fullUploadPending = true;
     this.tilesDirty = true;
+    this.falloutTouched = true; // conservative: replaced state may have fallout
   }
 
   /**
@@ -208,7 +220,9 @@ export class TerritoryPass {
    * hooks this to `borderPass.patchTile` so border recompute scales with the
    * number of changed tiles instead of full map area.
    */
-  setBorderPatchConsumer(fn: (x: number, y: number) => void): void {
+  setBorderPatchConsumer(
+    fn: (x: number, y: number, prevOwner: number, newOwner: number) => void,
+  ): void {
     this.borderPatchConsumer = fn;
   }
 
@@ -217,11 +231,14 @@ export class TerritoryPass {
    * Stable per-ref hash means repeated updates to the same tile stay in
    * arrival order in the same bucket — last write wins when drained.
    */
-  applyLiveDelta(tileState: Uint16Array, changedTiles: TilePair[]): void {
+  applyLiveDelta(
+    tileState: Uint16Array,
+    changedTiles: readonly number[],
+  ): void {
     const N = this.nBuckets;
     const buckets = this.dripBuckets;
     for (let i = 0; i < changedTiles.length; i++) {
-      const ref = changedTiles[i].ref;
+      const ref = changedTiles[i];
       const b = ((ref * 2654435761) >>> 0) % N;
       buckets[b].push(ref, tileState[ref]);
     }
@@ -238,12 +255,18 @@ export class TerritoryPass {
       for (let i = 0; i < bucket.length; i += 2) {
         const ref = bucket[i];
         const state = bucket[i + 1];
+        const prev = ts[ref];
+        if (((prev ^ state) & FALLOUT_BIT) !== 0) {
+          this.falloutTouched = true;
+        }
         ts[ref] = state;
         if (!pending) {
           const x = ref % w;
           const y = (ref - x) / w;
           this.scatter.push(x, y, state);
-          if (borderFn) borderFn(x, y);
+          if (borderFn) {
+            borderFn(x, y, prev & OWNER_MASK, state & OWNER_MASK);
+          }
         }
       }
       bucket.length = 0;
@@ -269,12 +292,18 @@ export class TerritoryPass {
       for (let i = 0; i < bucket.length; i += 2) {
         const ref = bucket[i];
         const state = bucket[i + 1];
+        const prev = ts[ref];
+        if (((prev ^ state) & FALLOUT_BIT) !== 0) {
+          this.falloutTouched = true;
+        }
         ts[ref] = state;
         if (!pending) {
           const x = ref % w;
           const y = (ref - x) / w;
           this.scatter.push(x, y, state);
-          if (borderFn) borderFn(x, y);
+          if (borderFn) {
+            borderFn(x, y, prev & OWNER_MASK, state & OWNER_MASK);
+          }
         }
       }
       bucket.length = 0;
@@ -287,6 +316,20 @@ export class TerritoryPass {
   private clearDripBuckets(): void {
     for (let b = 0; b < this.nBuckets; b++) this.dripBuckets[b].length = 0;
     this.currentBucket = 0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Queries
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns true (and resets) if any fallout bit flipped since the last call.
+   * Checked by the renderer each frame to (re)activate heat decay.
+   */
+  consumeFalloutTouched(): boolean {
+    const touched = this.falloutTouched;
+    this.falloutTouched = false;
+    return touched;
   }
 
   // ---------------------------------------------------------------------------
@@ -340,10 +383,6 @@ export class TerritoryPass {
     this.altView = active;
   }
 
-  setShowPatterns(show: boolean): void {
-    this.showPatterns = show;
-  }
-
   /**
    * Update the skin atlas texture handle. Called once at game start after
    * the renderer learns the locked-in skin URL set.
@@ -372,6 +411,11 @@ export class TerritoryPass {
     this.borderTex = tex;
   }
 
+  /** Affiliation palette (row 0 = border/relation colors) for the alt-view fill. */
+  setAffiliationTex(tex: WebGLTexture): void {
+    this.affiliationTex = tex;
+  }
+
   /** Draw territory fill + stale-nuke ground. Blending must be enabled by caller. */
   draw(cameraMatrix: Float32Array): void {
     this.flushTileTexture();
@@ -396,12 +440,13 @@ export class TerritoryPass {
     gl.uniform1f(this.uHighlightBrighten, mo.highlightFillBrighten);
     gl.uniform1i(
       this.uShowPatterns,
-      this.settings.passEnabled.territoryPatterns && this.showPatterns ? 1 : 0,
+      this.settings.passEnabled.territoryPatterns ? 1 : 0,
     );
     gl.uniform1i(this.uIsTeamMode, this.isTeamMode ? 1 : 0);
     gl.uniform1f(this.uDefenseDarken, mo.territoryDefenseDarken);
     gl.uniform1f(this.uSaturation, mo.territorySaturation);
     gl.uniform1f(this.uTerritoryAlpha, mo.territoryAlpha);
+    gl.uniform1f(this.uAltFillAlpha, this.settings.altView.fillAlpha);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tileTex);
@@ -424,6 +469,10 @@ export class TerritoryPass {
     if (this.borderTex) {
       gl.activeTexture(gl.TEXTURE8);
       gl.bindTexture(gl.TEXTURE_2D, this.borderTex);
+    }
+    if (this.affiliationTex) {
+      gl.activeTexture(gl.TEXTURE9);
+      gl.bindTexture(gl.TEXTURE_2D, this.affiliationTex);
     }
 
     gl.bindVertexArray(this.vao);

@@ -1,5 +1,5 @@
 {
-  "categories": ["europe"],
+  "categories": ["europe", "asia", "africa"],
   "id": "MareNostrum",
   "map": {
     "height": 1448,
@@ -210,5 +210,6 @@
       "name": "Numidia"
     }
   ],
+  "themes": ["europe", "asia", "africa"],
   "translation_key": "map.marenostrum"
 }

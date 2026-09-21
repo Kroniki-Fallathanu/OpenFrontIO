@@ -169,8 +169,8 @@ function createGlStub() {
     setLocalRailColor: noop("setLocalRailColor"),
     updateSpawnOverlay: noop("updateSpawnOverlay"),
     initSkinAtlas: noop("initSkinAtlas"),
-    applyTerrainDelta: (refs: number[]) =>
-      bump("applyTerrainDelta", refs.length),
+    applyTerrainRects: (rects: unknown[]) =>
+      bump("applyTerrainRects", rects.length),
     // uploadFrameData dispatch targets (FrameUploadTarget)
     uploadTileAndTrailState: noop("uploadTileAndTrailState"),
     uploadLiveDelta: (_: unknown, changed: unknown[]) => {
@@ -423,6 +423,12 @@ async function main(): Promise<void> {
     const transfers: Transferable[] = [gu.packedTileUpdates.buffer];
     if (gu.packedMotionPlans) {
       transfers.push(gu.packedMotionPlans.buffer);
+    }
+    if (gu.packedPlayerUpdates) {
+      transfers.push(gu.packedPlayerUpdates.buffer);
+    }
+    if (gu.packedAttackUpdates) {
+      transfers.push(gu.packedAttackUpdates.buffer);
     }
     start = performance.now();
     const cloned = structuredClone(gu, { transfer: transfers });

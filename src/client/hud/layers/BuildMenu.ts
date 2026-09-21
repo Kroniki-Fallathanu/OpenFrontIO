@@ -484,9 +484,9 @@ export class BuildMenu extends LitElement implements Controller {
                       : ""}
                   >
                     ${this.renderBuildIcon(item)}
-                    <span class="build-name"
-                      >${item.key && translateText(item.key)}</span
-                    >
+                    <span class="build-name">
+                      ${item.key && translateText(item.key)}
+                    </span>
                     <span class="build-description"
                       >${item.description &&
                       translateText(item.description)}</span

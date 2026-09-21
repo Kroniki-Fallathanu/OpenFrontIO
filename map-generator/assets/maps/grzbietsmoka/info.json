@@ -2,7 +2,7 @@
   "id": "GrzbietSmoka",
   "name": "Grzbiet Smoka",
   "translation_key": "map.grzbietsmoka",
-  "categories": ["other"],
+  "categories": ["fictional"],
   "multiplayer_frequency": 0,
   "nations": [
     {
@@ -55,5 +55,6 @@
       "name": "Osada Bobrów",
       "flag": ""
     }
-  ]
+  ],
+  "themes": ["hexah"]
 }

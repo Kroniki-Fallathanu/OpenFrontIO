@@ -1,22 +1,47 @@
 import { PseudoRandom } from "../PseudoRandom";
-import { ClientID } from "../Schemas";
+import { ClientID, TeamCountConfig } from "../Schemas";
 import { simpleHash } from "../Util";
-import { PlayerInfo, PlayerType, Team } from "./Game";
+import {
+  ColoredTeams,
+  Duos,
+  HumansVsNations,
+  PlayerInfo,
+  PlayerType,
+  Quads,
+  Team,
+  Trios,
+} from "./Game";
 
 export function assignTeams(
   players: PlayerInfo[],
   teams: Team[],
+  isDuosTriosQuads: boolean,
   maxTeamSize: number = getMaxTeamSize(players.length, teams.length),
 ): Map<PlayerInfo, Team | "kicked"> {
   const result = new Map<PlayerInfo, Team | "kicked">();
   const teamPlayerCount = new Map<Team, number>();
+
+  // Matchmade games arrive with a server-pinned team slot (teamIndex). The
+  // matchmaker already balanced those teams, so pins are honored
+  // unconditionally — before and regardless of clan/friend grouping and
+  // maxTeamSize — and seed the counts the balancing below sees.
+  const unpinned: PlayerInfo[] = [];
+  for (const p of players) {
+    const pinnedTeam = p.teamIndex === null ? undefined : teams[p.teamIndex];
+    if (pinnedTeam === undefined) {
+      unpinned.push(p);
+      continue;
+    }
+    result.set(p, pinnedTeam);
+    teamPlayerCount.set(pinnedTeam, (teamPlayerCount.get(pinnedTeam) ?? 0) + 1);
+  }
 
   // Clans are strict: a clan goes to one team together, and any overflow
   // members get kicked. (You opted into the clan, so we honor "all or
   // nothing" for placement.)
   const clanGroups = new Map<string, PlayerInfo[]>();
   const nonClanPlayers: PlayerInfo[] = [];
-  for (const p of players) {
+  for (const p of unpinned) {
     if (p.clanTag) {
       if (!clanGroups.has(p.clanTag)) clanGroups.set(p.clanTag, []);
       clanGroups.get(p.clanTag)!.push(p);
@@ -88,7 +113,7 @@ export function assignTeams(
       p.clientID !== null ? friendGraph.get(p.clientID) : undefined;
     let bestTeam: Team | null = null;
     let bestFriendCount = -1;
-    let bestSize = Infinity;
+    let bestSize = isDuosTriosQuads ? -1 : Infinity;
     for (const t of teams) {
       const size = teamPlayerCount.get(t) ?? 0;
       if (size >= maxTeamSize) continue;
@@ -100,7 +125,8 @@ export function assignTeams(
       }
       if (
         friendsOnTeam > bestFriendCount ||
-        (friendsOnTeam === bestFriendCount && size < bestSize)
+        (friendsOnTeam === bestFriendCount &&
+          (isDuosTriosQuads ? size > bestSize : size < bestSize))
       ) {
         bestFriendCount = friendsOnTeam;
         bestSize = size;
@@ -126,6 +152,7 @@ export function assignTeams(
   const otherPlayers = nonClanPlayers.filter(
     (p) => p.playerType !== PlayerType.Nation,
   );
+
   for (const p of otherPlayers.concat(nationPlayers)) {
     placePlayer(p);
   }
@@ -136,15 +163,64 @@ export function assignTeams(
 export function assignTeamsLobbyPreview(
   players: PlayerInfo[],
   teams: Team[],
+  teamCount: TeamCountConfig,
   nationCount: number,
 ): Map<PlayerInfo, Team | "kicked"> {
   const maxTeamSize = getMaxTeamSize(
     players.length + nationCount,
     teams.length,
   );
-  return assignTeams(players, teams, maxTeamSize);
+  return assignTeams(
+    players,
+    teams,
+    teamCount === Duos || teamCount === Trios || teamCount === Quads,
+    maxTeamSize,
+  );
 }
 
 export function getMaxTeamSize(numPlayers: number, numTeams: number): number {
   return Math.ceil(numPlayers / numTeams);
+}
+
+export function resolveTeamsList(
+  config: TeamCountConfig,
+  totalPlayers: number,
+): Team[] {
+  if (config === HumansVsNations) {
+    return [ColoredTeams.Humans, ColoredTeams.Nations];
+  }
+  let numTeams: number;
+  if (typeof config !== "number") {
+    const divisor =
+      config === Duos ? 2 : config === Trios ? 3 : config === Quads ? 4 : 0;
+    if (divisor === 0) {
+      throw new Error(`Unknown TeamCountConfig ${config}`);
+    }
+    // At least 2, even when attendance can't fill two teams: public lobbies
+    // start on their countdown no matter how few players are seated (or none,
+    // when only spectators remain), and a private Duos lobby can start with a
+    // single clan packed onto one team. Throwing here ("Too few teams") killed
+    // game construction on every client — the game ran server-side while
+    // everyone hung on the loading screen. The lobby preview already clamps
+    // the same way (LobbyPlayerView.getTeamList), so this keeps them in step.
+    numTeams = Math.max(2, Math.ceil(totalPlayers / divisor));
+  } else {
+    numTeams = config;
+  }
+  // Numeric configs state the team count outright, so below 2 is a
+  // misconfiguration (e.g. a Team game with playerTeams unset resolves to 0)
+  // and should stay loud rather than be silently reshaped.
+  if (numTeams < 2) {
+    throw new Error(`Too few teams: ${numTeams}`);
+  }
+  if (numTeams < 8) {
+    const teams = [ColoredTeams.Red, ColoredTeams.Blue];
+    if (numTeams >= 3) teams.push(ColoredTeams.Yellow);
+    if (numTeams >= 4) teams.push(ColoredTeams.Green);
+    if (numTeams >= 5) teams.push(ColoredTeams.Purple);
+    if (numTeams >= 6) teams.push(ColoredTeams.Orange);
+    if (numTeams >= 7) teams.push(ColoredTeams.Teal);
+    return teams;
+  }
+  return Array.from({ length: numTeams }, (_, i) => `Team ${i + 1}`);
 }

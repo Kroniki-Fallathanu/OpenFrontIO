@@ -36,6 +36,7 @@ function fakeGame({
     players: () => all,
     numLandTiles: () => landTiles,
     numTilesWithFallout: () => fallout,
+    elapsedGameSeconds: () => 0,
     config: () => ({ percentageTilesOwnedToWin: () => required }),
   };
 }
