@@ -1,5 +1,5 @@
 {
-  "categories": ["other"],
+  "categories": ["fictional", "europe"],
   "id": "Achiran",
   "map": {
     "height": 1700,
@@ -40,5 +40,6 @@
       "name": "Achill"
     }
   ],
+  "themes": ["europe", "scary"],
   "translation_key": "map.achiran"
 }

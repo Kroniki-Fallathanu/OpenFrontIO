@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { GameType } from "../../src/core/game/Game";
 import { GameServer } from "../../src/server/GameServer";
+import { makeGame } from "../util/GameServerHarness";
 
 // Internally created games (Hexah wild battles) have no host lobby UI, so the
 // server must start them itself the moment the creator connects — otherwise
@@ -45,13 +45,12 @@ function mockClient(persistentID: string, clientID: string): any {
 }
 
 function newGame(creatorPersistentID?: string): GameServer {
-  return new GameServer(
-    "testgame1",
-    mockLogger(),
-    Date.now(),
-    { gameType: GameType.Private, startDelay: 0 } as any,
+  return makeGame({
+    id: "testgame1",
+    log: mockLogger(),
+    config: { startDelay: 0 },
     creatorPersistentID,
-  );
+  });
 }
 
 describe("WildBattleAutoStart — start gry S2S po dołączeniu twórcy", () => {

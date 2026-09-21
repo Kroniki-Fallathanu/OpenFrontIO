@@ -4,9 +4,8 @@ vi.mock("../../src/server/WildBattleWebhook", () => ({
   emitWildBattleResult: vi.fn(),
 }));
 
-import { GameType } from "../../src/core/game/Game";
-import { GameServer } from "../../src/server/GameServer";
 import { emitWildBattleResult } from "../../src/server/WildBattleWebhook";
+import { makeGame } from "../util/GameServerHarness";
 
 /**
  * A Hexah battle only learns its outcome from the result webhook. When that
@@ -22,13 +21,14 @@ function gameWithSettledWinner(): any {
     warn: vi.fn(),
     error: vi.fn(),
   };
-  const game = new GameServer("battle123", logger, Date.now(), {
-    gameType: GameType.Private,
-  } as any) as any;
-  game.winner = {
-    type: "winner",
-    winner: ["player", "client-A"],
-    allPlayersStats: {},
+  const game = makeGame({ id: "battle123", log: logger }) as any;
+  // Rozstrzygnięty wynik: głosowanie zwycięzcy ma go już w ręku.
+  game.winnerVote = {
+    winner: () => ({
+      type: "winner",
+      winner: ["player", "client-A"],
+      allPlayersStats: {},
+    }),
   };
   game.lastGameRecord = { info: { gameID: "battle123" } };
   return game;
@@ -99,7 +99,9 @@ describe("republishing a settled wild battle result", () => {
 
   it("ignores a client the game kicked or desynced", () => {
     const game = gameWithSettledWinner();
-    game.outOfSyncClients = new Set(["client-A"]);
+    // Desynced clients are ignored wholesale: their view of the game, the
+    // winner included, is no longer the game's.
+    game.desync = { isDesynced: () => true };
 
     game.handleWinner(client(), {
       type: "winner",

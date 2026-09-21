@@ -1,5 +1,5 @@
 {
-  "categories": ["other"],
+  "categories": ["fictional"],
   "id": "DwaJeziora",
   "map": {
     "height": 768,
@@ -70,5 +70,6 @@
       "name": "Osada Bobrów"
     }
   ],
+  "themes": ["hexah"],
   "translation_key": "map.dwajeziora"
 }

@@ -2,7 +2,7 @@
   "id": "NorthAmerica",
   "name": "North America",
   "translation_key": "map.northamerica",
-  "categories": ["featured", "north_america"],
+  "categories": ["featured", "continental", "north_america"],
   "multiplayer_frequency": 5,
   "featured_rank": 3,
   "nations": [
@@ -350,6 +350,17 @@
       "coordinates": [1811, 782],
       "name": "Massachusetts",
       "flag": "Massachusetts"
+    },
+    {
+      "coordinates": [2719, 1264],
+      "name": "Cabo Verde",
+      "flag": "cv"
+    },
+    {
+      "coordinates": [2638, 840],
+      "name": "Azores",
+      "flag": "pt-azores"
     }
-  ]
+  ],
+  "themes": ["north_america"]
 }

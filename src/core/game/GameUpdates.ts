@@ -5,8 +5,10 @@ import {
   Gold,
   MessageType,
   NameViewData,
+  NukeState,
   PlayerID,
   PlayerType,
+  SamLauncherState,
   Team,
   Tick,
   TrainType,
@@ -33,9 +35,44 @@ export interface GameUpdateViewData {
    * (similar to `packedTileUpdates`) to avoid structured-clone copies.
    */
   packedMotionPlans?: Uint32Array;
-  playerNameViewData: Record<string, NameViewData>;
+  /**
+   * Packed per-player numeric stats as
+   * `[smallID, tilesOwned, gold, troops, goldEarned]`
+   * float64 quints — the fields that change for nearly every alive player
+   * every tick. They travel here (transferred, not structured-cloned) instead
+   * of in `PlayerUpdate` object diffs, which only carry them on a player's
+   * first emission. Gold is exact in a float64 (game values stay far below
+   * 2^53). Absent when no player's stats changed.
+   */
+  packedPlayerUpdates?: Float64Array;
+  /**
+   * Packed attack troop-count changes as
+   * `[ownerSmallID, direction, index, troops]` float64 quads, where
+   * `direction` is 0 for the owner's outgoingAttacks and 1 for
+   * incomingAttacks, and `index` addresses that array. Troop counts change
+   * every tick for every active attack, so they travel here instead of
+   * re-sending whole attack arrays in PlayerUpdate diffs; the arrays
+   * themselves are only resent when membership/order/retreating changes —
+   * which also guarantees the receiver's indexes line up (see
+   * packAttackTroopDeltas). Absent when no attack troop count changed.
+   */
+  packedAttackUpdates?: Float64Array;
+  /**
+   * Name placement per player. Only present on ticks where the worker
+   * recomputed placements (spawn ticks, the first ticks, every 30th tick,
+   * spawn end) — between those the values wouldn't change, so the record is
+   * omitted instead of re-cloned every tick. Consumers keep the last applied
+   * values.
+   */
+  playerNameViewData?: Record<string, NameViewData>;
   tickExecutionDuration?: number;
   pendingTurns?: number;
+  /**
+   * Packed tile refs that were inside a nuke blast radius this tick.
+   * Used by the renderer to mark nukeable layer tiles as destroyed.
+   * Absent when no nukes detonated.
+   */
+  packedNukeImpacts?: Uint32Array;
 }
 
 export interface ErrorUpdate {
@@ -153,6 +190,7 @@ export interface UnitUpdate {
   reachedTarget: boolean;
   warshipState?: WarshipState;
   transportShipState?: TransportShipState;
+  nukeState?: NukeState;
   targetable: boolean;
   markedForDeletion: number | false;
   targetUnitId?: number; // Only for trade ships
@@ -164,6 +202,7 @@ export interface UnitUpdate {
   hasTrainStation: boolean;
   trainType?: TrainType; // Only for trains
   loaded?: boolean; // Only for trains
+  samUpgrade?: SamLauncherState;
 }
 
 export interface AttackUpdate {
@@ -193,18 +232,33 @@ export interface PlayerUpdate {
   clientID?: ClientID | null;
   name?: string;
   displayName?: string;
+  clanTag?: string | null;
+  nationFlag?: string | null;
   team?: Team;
   smallID?: number;
   playerType?: PlayerType;
   isAlive?: boolean;
   isDisconnected?: boolean;
+  killedBy?: ClientID | null;
+  deathPosition?: number | null;
   tilesOwned?: number;
   gold?: Gold;
+  /** Cumulative ship-trade revenue (changes only on arrivals, so it diffs). */
+  tradeGold?: Gold;
+  /** Cumulative train revenue: own trains + external stops at own stations. */
+  trainGold?: Gold;
+  /** Cumulative piracy revenue: captured-ship payouts. */
+  piracyGold?: Gold;
+  /** Cumulative gold received from all sources (workers, trade, ...). */
+  goldEarned?: Gold;
   troops?: number;
   allies?: number[];
   embargoes?: Set<PlayerID>;
   isTraitor?: boolean;
   traitorRemainingTicks?: number;
+  inDoomsdayClock?: boolean;
+  isDecaying?: boolean;
+  markedDoomsdayClockTick?: number;
   targets?: number[];
   outgoingEmojis?: EmojiMessage[];
   outgoingAttacks?: AttackUpdate[];

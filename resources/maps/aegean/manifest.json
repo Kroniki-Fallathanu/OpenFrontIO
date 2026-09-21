@@ -1,5 +1,5 @@
 {
-  "categories": ["europe"],
+  "categories": ["europe", "asia"],
   "id": "Aegean",
   "map": {
     "height": 2000,
@@ -157,5 +157,6 @@
       }
     ]
   },
+  "themes": ["europe", "asia"],
   "translation_key": "map.aegean"
 }

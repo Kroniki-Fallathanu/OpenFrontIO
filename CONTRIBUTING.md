@@ -101,7 +101,7 @@ git checkout -b fix/issue-number-bug-name
 
 ### Coding Standards
 
-We enforce code quality using ESLint and Prettier. All code must follow existing style patterns, and new features should not break existing functionality.
+We enforce code quality using Oxlint, ESLint, and Prettier. ESLint remains during the Oxlint migration as a compatibility backstop. All code must follow existing style patterns, and new features should not break existing functionality.
 
 - **Format Code**: `npm run format`
 - **Lint Code**: `npm run lint`
@@ -160,6 +160,12 @@ Translators are welcome! We use Crowdin for translations. To help translate Open
 3. Sign up or log in, then join the project.
 4. Select the language you want to translate. If your language isn't listed, click "Request New Language".
 5. Translate the strings.
+
+Each language carries a flag, set by the `svg` string in the `lang` section and
+matched to a file in `resources/flags/`. Where a language isn't tied to a single
+country, use a script or community icon rather than a national flag — for example
+`zh-hant` (the glyph 繁) for Traditional Chinese, alongside `catalonia`, `eo` and
+`toki_pona`.
 
 Feel free to ask questions in the translation Discord server!
 

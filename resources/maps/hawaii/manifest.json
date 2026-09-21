@@ -1,5 +1,5 @@
 {
-  "categories": ["north_america", "oceania"],
+  "categories": ["oceania"],
   "id": "Hawaii",
   "map": {
     "height": 2076,
@@ -65,5 +65,6 @@
       "name": "Hilo"
     }
   ],
+  "themes": ["oceania"],
   "translation_key": "map.hawaii"
 }

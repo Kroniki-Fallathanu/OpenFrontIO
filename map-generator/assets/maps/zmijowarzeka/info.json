@@ -2,7 +2,7 @@
   "id": "ZmijowaRzeka",
   "name": "Żmijowa Rzeka",
   "translation_key": "map.zmijowarzeka",
-  "categories": ["other"],
+  "categories": ["fictional"],
   "multiplayer_frequency": 0,
   "nations": [
     {
@@ -55,5 +55,6 @@
       "name": "Osada Bobrów",
       "flag": ""
     }
-  ]
+  ],
+  "themes": ["hexah"]
 }

@@ -1,6 +1,11 @@
 import { EventBus, GameEvent } from "../core/EventBus";
 import { Cell } from "../core/game/Game";
-import { CenterCameraEvent, DragEvent, ZoomEvent } from "./InputHandler";
+import {
+  CenterCameraEvent,
+  DragEvent,
+  ZOOM_DELTA_DIVISOR,
+  ZoomEvent,
+} from "./InputHandler";
 import { GameView, PlayerView, UnitView } from "./view";
 
 export class GoToPlayerEvent implements GameEvent {
@@ -227,16 +232,18 @@ export class TransformHandler {
   centerCamera() {
     this.clearTarget();
     const player = this.game.myPlayer();
-    if (!player || !player.nameLocation()) return;
-    this.target = new Cell(player.nameLocation().x, player.nameLocation().y);
+    const nameLocation = player?.nameLocation();
+    if (!nameLocation) return;
+    this.target = new Cell(nameLocation.x, nameLocation.y);
     this.intervalID = setInterval(() => this.goTo(), GOTO_INTERVAL_MS);
   }
 
   private goTo() {
     const { screenX, screenY } = this.screenCenter();
 
-    if (this.target === null) throw new Error("null target");
-
+    if (this.target === null) {
+      throw new Error("null target");
+    }
     const positionClose =
       Math.abs(this.target.x - screenX) + Math.abs(this.target.y - screenY) < 2;
     const scaleClose =
@@ -294,7 +301,7 @@ export class TransformHandler {
   onZoom(event: ZoomEvent) {
     this.clearTarget();
     const oldScale = this.scale;
-    const zoomFactor = 1 + event.delta / 600;
+    const zoomFactor = 1 + event.delta / ZOOM_DELTA_DIVISOR;
     this.scale /= zoomFactor;
 
     // Clamp the scale to prevent extreme zooming

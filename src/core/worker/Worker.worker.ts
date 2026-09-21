@@ -6,6 +6,7 @@ import {
   AttackClusteredPositionsResultMessage,
   InitializedMessage,
   MainThreadMessage,
+  PlayerActionsErrorMessage,
   PlayerActionsResultMessage,
   PlayerBorderTilesResultMessage,
   PlayerBuildablesResultMessage,
@@ -113,6 +114,15 @@ function sendGameUpdateBatch(gameUpdates: GameUpdateViewData[]): void {
     if (gu.packedMotionPlans) {
       transfers.push(gu.packedMotionPlans.buffer);
     }
+    if (gu.packedPlayerUpdates) {
+      transfers.push(gu.packedPlayerUpdates.buffer);
+    }
+    if (gu.packedAttackUpdates) {
+      transfers.push(gu.packedAttackUpdates.buffer);
+    }
+    if (gu.packedNukeImpacts) {
+      transfers.push(gu.packedNukeImpacts.buffer);
+    }
   }
 
   ctx.postMessage(
@@ -172,7 +182,12 @@ ctx.addEventListener("message", async (e: MessageEvent<MainThreadMessage>) => {
 
     case "player_actions":
       if (!gameRunner) {
-        throw new Error("Game runner not initialized");
+        sendMessage({
+          type: "player_actions_error",
+          id: message.id,
+          error: "Game runner not initialized",
+        } as PlayerActionsErrorMessage);
+        break;
       }
 
       try {
@@ -189,7 +204,11 @@ ctx.addEventListener("message", async (e: MessageEvent<MainThreadMessage>) => {
         } as PlayerActionsResultMessage);
       } catch (error) {
         console.error("Failed to get actions:", error);
-        throw error;
+        sendMessage({
+          type: "player_actions_error",
+          id: message.id,
+          error: error instanceof Error ? error.message : String(error),
+        } as PlayerActionsErrorMessage);
       }
       break;
     case "player_buildables":

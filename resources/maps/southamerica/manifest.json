@@ -1,5 +1,5 @@
 {
-  "categories": ["featured", "south_america"],
+  "categories": ["featured", "continental", "south_america"],
   "featured_rank": 4,
   "id": "SouthAmerica",
   "map": {
@@ -146,5 +146,6 @@
       "name": "São Paulo"
     }
   ],
+  "themes": ["south_america"],
   "translation_key": "map.southamerica"
 }

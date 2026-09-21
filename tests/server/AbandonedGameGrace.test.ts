@@ -13,9 +13,9 @@ vi.mock("../../src/core/Schemas", async () => {
   };
 });
 
-import { GameType } from "../../src/core/game/Game";
 import { GamePhase, GameServer } from "../../src/server/GameServer";
 import { ServerEnv } from "../../src/server/ServerEnv";
+import { makeGame, startGame } from "../util/GameServerHarness";
 
 /**
  * A game with nobody connected is finished and pruned. The window used to be a
@@ -29,11 +29,9 @@ describe("abandoned game grace period", () => {
   let mockLogger: any;
 
   function startedGame(): GameServer {
-    const game = new GameServer("grace-game", mockLogger, Date.now(), {
-      gameType: GameType.Private,
-    } as any);
+    const game = makeGame({ id: "grace-game", log: mockLogger });
     game.setStartsAt(Date.now());
-    game.start();
+    startGame(game);
     return game;
   }
 

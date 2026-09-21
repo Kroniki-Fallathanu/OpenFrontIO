@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zb, ZbEncodeError } from "../../zbin";
 import { UnitType } from "./game/Game";
 
 export const bombUnits = ["abomb", "hbomb", "mirv", "mirvw"] as const;
@@ -61,6 +62,27 @@ export const unitTypeToOtherUnit = {
 export const ATTACK_INDEX_SENT = 0; // Outgoing attack troops
 export const ATTACK_INDEX_RECV = 1; // Incmoing attack troops
 export const ATTACK_INDEX_CANCEL = 2; // Cancelled attack troops
+// Largest SINGLE incoming attack, by the troop count it launched with. A
+// running maximum, not a sum -- ATTACK_INDEX_RECV already carries the total.
+export const ATTACK_INDEX_MAX_RECV = 3;
+
+// Tiles. Peak is the high-water mark; the drawdown pair is the worst
+// proportional decline from a running peak to any later point (maximum
+// drawdown), which is what makes a comeback measurable. The pair is NOT
+// "peak, then lowest after it" -- recovering to a new peak would erase the
+// collapse that made it a comeback.
+export const TILE_INDEX_PEAK = 0;
+export const TILE_INDEX_DRAWDOWN_PEAK = 1;
+export const TILE_INDEX_DRAWDOWN_TROUGH = 2;
+
+// Alliances. BROKEN_BY_OTHER is the betrayed side; the breaker's side is
+// already counted by `betrayals`. LONGEST_HELD is in ticks.
+export const ALLIANCE_INDEX_FORMED = 0;
+export const ALLIANCE_INDEX_BROKEN_BY_OTHER = 1;
+export const ALLIANCE_INDEX_EXPIRED = 2;
+export const ALLIANCE_INDEX_HELD_TO_END = 3;
+export const ALLIANCE_INDEX_PEAK_CONCURRENT = 4;
+export const ALLIANCE_INDEX_LONGEST_HELD = 5;
 
 // Player types
 export const PLAYER_INDEX_HUMAN = 0;
@@ -93,12 +115,30 @@ export const OTHER_INDEX_CAPTURE = 2; // Structures captured
 export const OTHER_INDEX_LOST = 3; // Structures/warships destroyed/captured by others
 export const OTHER_INDEX_UPGRADE = 4; // Structures upgraded
 
-export const BigIntStringSchema = z.preprocess((val) => {
-  if (val === null) return 0n;
-  if (typeof val === "string" && /^-?\d+$/.test(val)) return BigInt(val);
-  if (typeof val === "bigint") return val;
-  return val;
-}, z.bigint());
+// Stats are bigints in the engine but ride HTTP/JSON as decimal strings (see
+// `replacer`), so the schema accepts either. On the binary wire they encode as
+// a bigint varint; the codec applies the same coercion as the preprocess so
+// both in-memory shapes serialize identically.
+export const BigIntStringSchema = zb.custom(
+  z.preprocess((val) => {
+    if (val === null) return 0n;
+    if (typeof val === "string" && /^-?\d+$/.test(val)) return BigInt(val);
+    if (typeof val === "bigint") return val;
+    return val;
+  }, z.bigint()),
+  {
+    enc: (w, v) => w.bigint(toBigInt(v)),
+    dec: (r) => r.bigint(),
+    minBytes: 1,
+  },
+);
+
+function toBigInt(v: unknown): bigint {
+  if (typeof v === "bigint") return v;
+  if (v === null || v === undefined) return 0n;
+  if (typeof v === "string" && /^-?\d+$/.test(v)) return BigInt(v);
+  throw new ZbEncodeError(`not a bigint-valued stat: ${String(v)}`);
+}
 
 const AtLeastOneNumberSchema = BigIntStringSchema.array().min(1);
 export type AtLeastOneNumber = z.infer<typeof AtLeastOneNumberSchema>;
@@ -108,11 +148,46 @@ export const PlayerStatsSchema = z
     attacks: AtLeastOneNumberSchema.optional(),
     betrayals: BigIntStringSchema.optional(),
     killedAt: BigIntStringSchema.optional(),
+    // OFM live standings: the eliminator's clientID (null = eliminated by a
+    // non-client, e.g. a bot/nation) and finishing place at elimination. Both
+    // first-write-wins. Surfaced live on the PlayerUpdate (not just at game end).
+    killedBy: z.string().nullable().optional(),
+    deathPosition: zb.uint().optional(),
+    // Tiles owned at game end, for OFM standings (set on setWinner).
+    finalTiles: BigIntStringSchema.optional(),
+    // Humans this player eliminated (victim clientID + tick), for OFM kill scoring.
+    kills: z
+      .array(z.object({ victim: z.string(), tick: BigIntStringSchema }))
+      .optional(),
     conquests: AtLeastOneNumberSchema.optional(),
     boats: z.partialRecord(BoatUnitSchema, AtLeastOneNumberSchema).optional(),
     bombs: z.partialRecord(BombUnitSchema, AtLeastOneNumberSchema).optional(),
     gold: AtLeastOneNumberSchema.optional(),
     units: z.partialRecord(OtherUnitSchema, AtLeastOneNumberSchema).optional(),
+    // Appended at the end of the shape on purpose: zbin encodes object fields
+    // in declaration order (zbin/zb.ts), so inserting above would silently
+    // change the wire layout for every field after the insertion point.
+    tiles: AtLeastOneNumberSchema.optional(),
+    alliances: AtLeastOneNumberSchema.optional(),
+    peakTroops: BigIntStringSchema.optional(),
   })
   .optional();
 export type PlayerStats = z.infer<typeof PlayerStatsSchema>;
+
+// Reading archived records: `conquests` was a single value
+// (BigIntStringSchema) before it was split into per-player-type buckets, so
+// wrap old scalars into a one-element array (index 0 = human) on read.
+export const ArchivedPlayerStatsSchema = z.preprocess((val) => {
+  if (
+    val !== null &&
+    typeof val === "object" &&
+    !Array.isArray(val) &&
+    "conquests" in val
+  ) {
+    const { conquests } = val as { conquests: unknown };
+    if (conquests !== undefined && !Array.isArray(conquests)) {
+      return { ...(val as Record<string, unknown>), conquests: [conquests] };
+    }
+  }
+  return val;
+}, PlayerStatsSchema);

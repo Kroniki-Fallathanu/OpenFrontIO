@@ -38,6 +38,11 @@ describe("GraphicsOverridesSchema", () => {
       { structure: {} },
       { structure: { classicIcons: true } },
       { structure: { classicIcons: false } },
+      { structure: { classicNumbers: true } },
+      { structure: { classicNumbers: false } },
+      { structure: { classicIcons: true, classicNumbers: false } },
+      { structure: { iconSize: 80 } },
+      { structure: { iconSize: 40, classicIcons: false } },
       { name: { darkNames: true }, structure: { classicIcons: true } },
     ];
     for (const c of cases) {
@@ -57,12 +62,50 @@ describe("GraphicsOverridesSchema", () => {
     }
   });
 
+  test("accepts partial altView overrides", () => {
+    expect(GraphicsOverridesSchema.safeParse({ altView: {} }).success).toBe(
+      true,
+    );
+    expect(
+      GraphicsOverridesSchema.safeParse({ altView: { fillAlpha: 0.2 } })
+        .success,
+    ).toBe(true);
+    expect(
+      GraphicsOverridesSchema.safeParse({ altView: { fillAlpha: "faint" } })
+        .success,
+    ).toBe(false);
+  });
+
   test("accepts partial railroad overrides", () => {
     const cases = [
       { railroad: {} },
       { railroad: { railMinZoom: 2 } },
       { railroad: { railThickness: 1.5 } },
       { railroad: { railMinZoom: 0, railThickness: 3 } },
+    ];
+    for (const c of cases) {
+      expect(GraphicsOverridesSchema.safeParse(c).success).toBe(true);
+    }
+  });
+
+  test("accepts partial smallPlayerGlow overrides", () => {
+    const cases = [
+      { smallPlayerGlow: {} },
+      { smallPlayerGlow: { strength: 0 } },
+      { smallPlayerGlow: { strength: 0.5 } },
+    ];
+    for (const c of cases) {
+      expect(GraphicsOverridesSchema.safeParse(c).success).toBe(true);
+    }
+  });
+
+  test("accepts partial lighting overrides", () => {
+    const cases = [
+      { lighting: {} },
+      { lighting: { ambient: 0.5 } },
+      { lighting: { ambient: 1 } },
+      { lighting: { falloffPower: 2 } },
+      { lighting: { ambient: 0.3, falloffPower: 1.5 } },
     ];
     for (const c of cases) {
       expect(GraphicsOverridesSchema.safeParse(c).success).toBe(true);
@@ -92,6 +135,11 @@ describe("GraphicsOverridesSchema", () => {
     ).toBe(false);
     expect(
       GraphicsOverridesSchema.safeParse({
+        structure: { classicNumbers: "yes" },
+      }).success,
+    ).toBe(false);
+    expect(
+      GraphicsOverridesSchema.safeParse({
         mapOverlay: { territorySaturation: "full" },
       }).success,
     ).toBe(false);
@@ -105,13 +153,37 @@ describe("GraphicsOverridesSchema", () => {
         railroad: { railThickness: "wide" },
       }).success,
     ).toBe(false);
+    expect(
+      GraphicsOverridesSchema.safeParse({
+        smallPlayerGlow: { strength: "strong" },
+      }).success,
+    ).toBe(false);
+    expect(
+      GraphicsOverridesSchema.safeParse({
+        lighting: { ambient: "dark" },
+      }).success,
+    ).toBe(false);
+    expect(
+      GraphicsOverridesSchema.safeParse({
+        lighting: { falloffPower: "soft" },
+      }).success,
+    ).toBe(false);
   });
 });
 
 describe("applyGraphicsOverrides", () => {
-  test("with empty overrides matches createRenderSettings defaults", () => {
+  test("with empty overrides applies default classic structure, otherwise matches createRenderSettings", () => {
     const fromGen = gen({});
     const fromCreate = createRenderSettings();
+    // Classic icons are the default, so empty overrides still tune the
+    // structure slice (borderDarken/fillDarken/iconDarken/iconAlpha).
+    expect(fromGen.structure.borderDarken).toBe(0.7);
+    expect(fromGen.structure.fillDarken).toBe(1.0);
+    expect(fromGen.structure.iconDarken).toBe(0.3);
+    expect(fromGen.structure.iconAlpha).toBe(0.9);
+    // Everything outside the structure slice is left at createRenderSettings
+    // defaults.
+    fromCreate.structure = fromGen.structure;
     expect(fromGen).toEqual(fromCreate);
   });
 
@@ -202,13 +274,15 @@ describe("applyGraphicsOverrides", () => {
   });
 
   test("settings outside the name slice are untouched by name overrides", () => {
-    const defaults = createRenderSettings();
+    // Baseline is empty overrides (which apply the default classic structure),
+    // so name overrides should leave the non-name slices identical to it.
+    const base = gen({});
     const s = gen({
       name: { nameScaleFactor: 0.6, darkNames: true },
     });
-    expect(s.passEnabled).toEqual(defaults.passEnabled);
-    expect(s.lighting).toEqual(defaults.lighting);
-    expect(s.structure).toEqual(defaults.structure);
+    expect(s.passEnabled).toEqual(base.passEnabled);
+    expect(s.lighting).toEqual(base.lighting);
+    expect(s.structure).toEqual(base.structure);
   });
 
   test("classicIcons=true → light shape + dark icon + 0.9 alpha", () => {
@@ -224,7 +298,7 @@ describe("applyGraphicsOverrides", () => {
     expect(s.iconAlpha).toBe(0.9);
   });
 
-  test("classicIcons=false or absent → keeps render-settings.json defaults (fully opaque)", () => {
+  test("classicIcons=false → keeps render-settings.json defaults (fully opaque)", () => {
     const defaults = createRenderSettings().structure;
     const off = gen({
       structure: { classicIcons: false },
@@ -233,11 +307,49 @@ describe("applyGraphicsOverrides", () => {
     expect(off.fillDarken).toBe(defaults.fillDarken);
     expect(off.iconDarken).toBe(0);
     expect(off.iconAlpha).toBe(1);
+  });
+
+  test("classicIcons absent → applies classic styling by default", () => {
     const absent = gen({ structure: {} }).structure;
-    expect(absent.borderDarken).toBe(defaults.borderDarken);
-    expect(absent.fillDarken).toBe(defaults.fillDarken);
-    expect(absent.iconDarken).toBe(0);
-    expect(absent.iconAlpha).toBe(1);
+    expect(absent.borderDarken).toBe(0.7);
+    expect(absent.fillDarken).toBe(1.0);
+    expect(absent.iconDarken).toBe(0.3);
+    expect(absent.iconAlpha).toBe(0.9);
+  });
+
+  test("iconSize override sets structure.iconSize", () => {
+    expect(gen({ structure: { iconSize: 90 } }).structure.iconSize).toBe(90);
+  });
+
+  test("iconSize absent → keeps render-settings.json default", () => {
+    const def = createRenderSettings().structure.iconSize;
+    expect(gen({ structure: {} }).structure.iconSize).toBe(def);
+    expect(gen({}).structure.iconSize).toBe(def);
+  });
+
+  test("classicNumbers=true → classic bitmap font", () => {
+    expect(
+      gen({ structure: { classicNumbers: true } }).structureLevel.classicFont,
+    ).toBe(true);
+  });
+
+  test("classicNumbers=false → smooth MSDF font", () => {
+    expect(
+      gen({ structure: { classicNumbers: false } }).structureLevel.classicFont,
+    ).toBe(false);
+  });
+
+  test("classicNumbers absent → defaults to classic bitmap font", () => {
+    expect(gen({ structure: {} }).structureLevel.classicFont).toBe(true);
+    expect(gen({}).structureLevel.classicFont).toBe(true);
+  });
+
+  test("classicNumbers is independent of classicIcons", () => {
+    const s = gen({
+      structure: { classicIcons: false, classicNumbers: true },
+    });
+    expect(s.structureLevel.classicFont).toBe(true);
+    expect(s.structure.iconDarken).toBe(0);
   });
 
   test("applies territorySaturation override (including 0)", () => {
@@ -258,6 +370,14 @@ describe("applyGraphicsOverrides", () => {
     expect(
       gen({ mapOverlay: { territoryAlpha: 0 } }).mapOverlay.territoryAlpha,
     ).toBe(0);
+  });
+
+  test("applies altView.fillAlpha override (including 0)", () => {
+    expect(gen({ altView: { fillAlpha: 0.4 } }).altView.fillAlpha).toBe(0.4);
+    expect(gen({ altView: { fillAlpha: 0 } }).altView.fillAlpha).toBe(0);
+    expect(gen({}).altView.fillAlpha).toBe(
+      createRenderSettings().altView.fillAlpha,
+    );
   });
 
   test("mapOverlay override leaves other mapOverlay fields at defaults", () => {
@@ -290,6 +410,77 @@ describe("applyGraphicsOverrides", () => {
     expect(r.railAlpha).toBe(defaults.railAlpha);
     const z = gen({ railroad: { railMinZoom: 1 } }).railroad;
     expect(z.railThickness).toBe(defaults.railThickness);
+  });
+
+  test("applies smallPlayerGlow strength override (including 0 = off)", () => {
+    expect(
+      gen({ smallPlayerGlow: { strength: 0.5 } }).smallPlayerGlow.strength,
+    ).toBe(0.5);
+    expect(
+      gen({ smallPlayerGlow: { strength: 0 } }).smallPlayerGlow.strength,
+    ).toBe(0);
+  });
+
+  test("smallPlayerGlow strength absent → keeps default of 0.35", () => {
+    expect(gen({}).smallPlayerGlow.strength).toBe(0.35);
+    expect(gen({ smallPlayerGlow: {} }).smallPlayerGlow.strength).toBe(0.35);
+  });
+
+  test("smallPlayerGlow override leaves other glow fields at defaults", () => {
+    const defaults = createRenderSettings().smallPlayerGlow;
+    const g = gen({ smallPlayerGlow: { strength: 0.25 } }).smallPlayerGlow;
+    expect(g.alpha).toBe(defaults.alpha);
+    expect(g.pulseSpeed).toBe(defaults.pulseSpeed);
+    expect(g.color).toEqual(defaults.color);
+  });
+
+  test("ambient < 1 sets ambient and enables the lighting pass", () => {
+    const l = gen({ lighting: { ambient: 0.5 } }).lighting;
+    expect(l.ambient).toBe(0.5);
+    expect(l.enabled).toBe(true);
+  });
+
+  test("ambient === 1 sets ambient but leaves lighting disabled (identity)", () => {
+    const l = gen({ lighting: { ambient: 1 } }).lighting;
+    expect(l.ambient).toBe(1);
+    expect(l.enabled).toBe(false);
+  });
+
+  test("ambient absent → lighting stays at render-settings.json defaults", () => {
+    const defaults = createRenderSettings().lighting;
+    expect(gen({}).lighting.ambient).toBe(defaults.ambient);
+    expect(gen({}).lighting.enabled).toBe(defaults.enabled);
+    expect(gen({ lighting: {} }).lighting.enabled).toBe(defaults.enabled);
+  });
+
+  test("applies falloffPower override (including values below default)", () => {
+    expect(gen({ lighting: { falloffPower: 1.4 } }).lighting.falloffPower).toBe(
+      1.4,
+    );
+    expect(gen({ lighting: { falloffPower: 3 } }).lighting.falloffPower).toBe(
+      3,
+    );
+  });
+
+  test("falloffPower override alone does not enable the lighting pass", () => {
+    expect(gen({ lighting: { falloffPower: 1.4 } }).lighting.enabled).toBe(
+      false,
+    );
+  });
+
+  test("lighting override leaves other lighting fields at defaults", () => {
+    const defaults = createRenderSettings().lighting;
+    const l = gen({ lighting: { ambient: 0.4 } }).lighting;
+    expect(l.falloffPower).toBe(defaults.falloffPower);
+    expect(l.blurZoomDivisor).toBe(defaults.blurZoomDivisor);
+    expect(l.lightRadiusMultiplier).toBe(defaults.lightRadiusMultiplier);
+  });
+
+  test("ambient + falloffPower compose together", () => {
+    const l = gen({ lighting: { ambient: 0.3, falloffPower: 1 } }).lighting;
+    expect(l.ambient).toBe(0.3);
+    expect(l.falloffPower).toBe(1);
+    expect(l.enabled).toBe(true);
   });
 
   test("classicIcons + name overrides compose independently", () => {

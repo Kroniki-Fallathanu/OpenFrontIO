@@ -4,8 +4,13 @@ import { PlayerType } from "../src/core/game/Game";
 import {
   applyStateUpdate,
   diffPlayerUpdate,
+  packAttackTroopDeltas,
 } from "../src/core/game/GameUpdateUtils";
-import { GameUpdateType, PlayerUpdate } from "../src/core/game/GameUpdates";
+import {
+  AttackUpdate,
+  GameUpdateType,
+  PlayerUpdate,
+} from "../src/core/game/GameUpdates";
 import { makePlayerUpdate } from "./util/viewStubs";
 
 function makePlayerState(overrides: Partial<PlayerState> = {}): PlayerState {
@@ -13,11 +18,20 @@ function makePlayerState(overrides: Partial<PlayerState> = {}): PlayerState {
     smallID: 1,
     isAlive: true,
     isDisconnected: false,
+    killedBy: null,
+    deathPosition: null,
     tilesOwned: 0,
     gold: 0,
+    tradeGold: 0,
+    trainGold: 0,
+    piracyGold: 0,
+    goldEarned: 0,
     troops: 100,
     isTraitor: false,
     traitorRemainingTicks: 0,
+    inDoomsdayClock: false,
+    isDecaying: false,
+    markedDoomsdayClockTick: -1,
     betrayals: 0,
     hasSpawned: true,
     lastDeleteUnitTick: 0,
@@ -41,24 +55,100 @@ describe("diffPlayerUpdate", () => {
   });
 
   it("returns a diff with only changed primitives plus type+id", () => {
-    const prev = makePlayerUpdate({ gold: 100n });
-    const next = makePlayerUpdate({ gold: 250n });
+    const prev = makePlayerUpdate({ betrayals: 0 });
+    const next = makePlayerUpdate({ betrayals: 1 });
     const diff = diffPlayerUpdate(prev, next);
     expect(diff).not.toBeNull();
     expect(diff).toEqual({
       type: GameUpdateType.Player,
       id: "player-a",
-      gold: 250n,
+      betrayals: 1,
     });
   });
 
   it("includes every changed primitive in a single diff", () => {
-    const prev = makePlayerUpdate({ gold: 100n, troops: 50, tilesOwned: 5 });
-    const next = makePlayerUpdate({ gold: 200n, troops: 75, tilesOwned: 5 });
+    const prev = makePlayerUpdate({ betrayals: 0, isTraitor: false });
+    const next = makePlayerUpdate({ betrayals: 1, isTraitor: true });
     const diff = diffPlayerUpdate(prev, next)!;
-    expect(diff.gold).toBe(200n);
-    expect(diff.troops).toBe(75);
-    expect(diff.tilesOwned).toBeUndefined();
+    expect(diff.betrayals).toBe(1);
+    expect(diff.isTraitor).toBe(true);
+    expect(diff.hasSpawned).toBeUndefined();
+  });
+
+  it("carries a changed clanTag and stays quiet when it is unchanged", () => {
+    expect(
+      diffPlayerUpdate(
+        makePlayerUpdate({ clanTag: "ABCDE" }),
+        makePlayerUpdate({ clanTag: "ABCDE" }),
+      ),
+    ).toBeNull();
+    const diff = diffPlayerUpdate(
+      makePlayerUpdate({ clanTag: null }),
+      makePlayerUpdate({ clanTag: "ABCDE" }),
+    )!;
+    expect(diff.clanTag).toBe("ABCDE");
+  });
+
+  it("carries a changed nationFlag and stays quiet when it is unchanged", () => {
+    expect(
+      diffPlayerUpdate(
+        makePlayerUpdate({ nationFlag: "in" }),
+        makePlayerUpdate({ nationFlag: "in" }),
+      ),
+    ).toBeNull();
+    const diff = diffPlayerUpdate(
+      makePlayerUpdate({ nationFlag: null }),
+      makePlayerUpdate({ nationFlag: "pk" }),
+    )!;
+    expect(diff.nationFlag).toBe("pk");
+  });
+
+  it("emits killedBy + deathPosition when a player is eliminated", () => {
+    const prev = makePlayerUpdate({ killedBy: null, deathPosition: null });
+    const next = makePlayerUpdate({ killedBy: "client-b", deathPosition: 3 });
+    const diff = diffPlayerUpdate(prev, next)!;
+    expect(diff.killedBy).toBe("client-b");
+    expect(diff.deathPosition).toBe(3);
+  });
+
+  it("emits tradeGold/trainGold/piracyGold/goldEarned only when counters change", () => {
+    const prev = makePlayerUpdate({
+      tradeGold: 100n,
+      trainGold: 50n,
+      piracyGold: 10n,
+      goldEarned: 500n,
+    });
+    expect(
+      diffPlayerUpdate(
+        prev,
+        makePlayerUpdate({
+          tradeGold: 100n,
+          trainGold: 50n,
+          piracyGold: 10n,
+          goldEarned: 500n,
+        }),
+      ),
+    ).toBeNull();
+    const diff = diffPlayerUpdate(
+      prev,
+      makePlayerUpdate({
+        tradeGold: 150n,
+        trainGold: 50n,
+        piracyGold: 25n,
+        goldEarned: 800n,
+      }),
+    )!;
+    expect(diff.tradeGold).toBe(150n);
+    expect(diff.piracyGold).toBe(25n);
+    expect(diff.trainGold).toBeUndefined();
+    // goldEarned is packed-channel only — ignored by the object diff.
+    expect(diff.goldEarned).toBeUndefined();
+  });
+
+  it("ignores tilesOwned/gold/troops — they travel via packedPlayerUpdates", () => {
+    const prev = makePlayerUpdate({ gold: 100n, troops: 50, tilesOwned: 5 });
+    const next = makePlayerUpdate({ gold: 200n, troops: 75, tilesOwned: 9 });
+    expect(diffPlayerUpdate(prev, next)).toBeNull();
   });
 
   it("detects allies array additions", () => {
@@ -94,7 +184,22 @@ describe("diffPlayerUpdate", () => {
     expect(diffPlayerUpdate(prev, next)).toBeNull();
   });
 
-  it("detects outgoingAttacks element changes", () => {
+  it("detects outgoingAttacks membership/retreating changes", () => {
+    const prev = makePlayerUpdate({
+      outgoingAttacks: [
+        { attackerID: 1, targetID: 2, troops: 10, id: "a", retreating: false },
+      ],
+    });
+    const next = makePlayerUpdate({
+      outgoingAttacks: [
+        { attackerID: 1, targetID: 2, troops: 10, id: "a", retreating: true },
+      ],
+    });
+    const diff = diffPlayerUpdate(prev, next)!;
+    expect(diff.outgoingAttacks).toEqual(next.outgoingAttacks);
+  });
+
+  it("ignores attack troop-count changes — they travel via packedAttackUpdates", () => {
     const prev = makePlayerUpdate({
       outgoingAttacks: [
         { attackerID: 1, targetID: 2, troops: 10, id: "a", retreating: false },
@@ -105,8 +210,7 @@ describe("diffPlayerUpdate", () => {
         { attackerID: 1, targetID: 2, troops: 20, id: "a", retreating: false },
       ],
     });
-    const diff = diffPlayerUpdate(prev, next)!;
-    expect(diff.outgoingAttacks).toEqual(next.outgoingAttacks);
+    expect(diffPlayerUpdate(prev, next)).toBeNull();
   });
 
   it("detects alliance list changes", () => {
@@ -143,15 +247,87 @@ describe("diffPlayerUpdate", () => {
   });
 
   it("always includes type and id on a non-null diff", () => {
-    const prev = makePlayerUpdate({ gold: 100n });
-    const next = makePlayerUpdate({ gold: 200n });
+    const prev = makePlayerUpdate({ betrayals: 0 });
+    const next = makePlayerUpdate({ betrayals: 1 });
     const diff = diffPlayerUpdate(prev, next)!;
     expect(diff.type).toBe(GameUpdateType.Player);
     expect(diff.id).toBe(next.id);
   });
 });
 
+describe("packAttackTroopDeltas", () => {
+  const attack = (
+    troops: number,
+    id = "a",
+    retreating = false,
+  ): AttackUpdate => ({
+    attackerID: 1,
+    targetID: 2,
+    troops,
+    id,
+    retreating,
+  });
+
+  it("emits [owner, direction, index, troops] quads for changed troop counts", () => {
+    const out: number[] = [];
+    packAttackTroopDeltas(
+      [attack(10, "a"), attack(20, "b")],
+      [attack(10, "a"), attack(15, "b")],
+      7,
+      1,
+      out,
+    );
+    expect(out).toEqual([7, 1, 1, 15]);
+  });
+
+  it("emits nothing when arrays are not membership-equal (diff resends them)", () => {
+    const out: number[] = [];
+    packAttackTroopDeltas(
+      [attack(10, "a")],
+      [attack(15, "a"), attack(5, "b")],
+      7,
+      0,
+      out,
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("a retreat flip suppresses quads even when troops also changed", () => {
+    // retreating is part of membership equality, so the whole array resends
+    // (with fresh troops) and patches must NOT be emitted — a tick resends
+    // or patches, never both.
+    const out: number[] = [];
+    packAttackTroopDeltas(
+      [attack(10, "a", false)],
+      [attack(5, "a", true)],
+      7,
+      0,
+      out,
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("emits nothing for identical references or missing arrays", () => {
+    const out: number[] = [];
+    const arr = [attack(10)];
+    packAttackTroopDeltas(arr, arr, 7, 0, out);
+    packAttackTroopDeltas(undefined, arr, 7, 0, out);
+    packAttackTroopDeltas(arr, undefined, 7, 0, out);
+    expect(out).toEqual([]);
+  });
+});
+
 describe("applyStateUpdate", () => {
+  it("applies killedBy + deathPosition on elimination", () => {
+    const target = makePlayerState();
+    applyStateUpdate(
+      target,
+      makePlayerUpdate({ killedBy: "client-b", deathPosition: 3 }),
+    );
+    expect(target.killedBy).toBe("client-b");
+    expect(target.deathPosition).toBe(3);
+  });
+
   it("applies every field from a full update", () => {
     const target = makePlayerState();
     const pu = makePlayerUpdate({
@@ -191,6 +367,28 @@ describe("applyStateUpdate", () => {
     });
     expect(target.gold).toBe(9_999_999_999);
     expect(typeof target.gold).toBe("number");
+  });
+
+  it("converts bigint tradeGold/trainGold/piracyGold/goldEarned to numbers", () => {
+    const target = makePlayerState({
+      tradeGold: 0,
+      trainGold: 0,
+      piracyGold: 0,
+      goldEarned: 0,
+    });
+    applyStateUpdate(target, {
+      type: GameUpdateType.Player,
+      id: "p",
+      tradeGold: 12_345n,
+      trainGold: 678n,
+      piracyGold: 90n,
+      goldEarned: 555n,
+    });
+    expect(target.tradeGold).toBe(12_345);
+    expect(target.trainGold).toBe(678);
+    expect(target.piracyGold).toBe(90);
+    expect(target.goldEarned).toBe(555);
+    expect(typeof target.goldEarned).toBe("number");
   });
 
   it("clamps negative traitorRemainingTicks to zero", () => {
@@ -276,18 +474,10 @@ describe("applyStateUpdate", () => {
 
 describe("diff + apply round-trip", () => {
   it("emitting full first + diff second reconstructs final state", () => {
-    const v0 = makePlayerUpdate({
-      gold: 0n,
-      troops: 100,
-      tilesOwned: 0,
-      allies: [],
-    });
-    const v1 = makePlayerUpdate({
-      gold: 200n,
-      troops: 150,
-      tilesOwned: 5,
-      allies: [2],
-    });
+    // tilesOwned/gold/troops round-trip via packedPlayerUpdates instead
+    // (covered in tests/client/view/GameView.test.ts).
+    const v0 = makePlayerUpdate({ betrayals: 0, allies: [] });
+    const v1 = makePlayerUpdate({ betrayals: 2, allies: [2] });
 
     // Initial state: receiver applies the full update.
     const target = makePlayerState();
@@ -298,9 +488,7 @@ describe("diff + apply round-trip", () => {
     expect(diff).not.toBeNull();
     applyStateUpdate(target, diff);
 
-    expect(target.gold).toBe(200);
-    expect(target.troops).toBe(150);
-    expect(target.tilesOwned).toBe(5);
+    expect(target.betrayals).toBe(2);
     expect(target.allies).toEqual([2]);
   });
 
@@ -308,5 +496,74 @@ describe("diff + apply round-trip", () => {
     const v0 = makePlayerUpdate({ gold: 100n, playerType: PlayerType.Human });
     const v1 = makePlayerUpdate({ gold: 100n, playerType: PlayerType.Human });
     expect(diffPlayerUpdate(v0, v1)).toBeNull();
+  });
+});
+
+describe("diffPlayerUpdate — every scalar field must be wired up", () => {
+  // diffPlayerUpdate sends ONLY changed fields, so a field added to PlayerUpdate
+  // without a matching setIfDifferent() line is silently never transmitted: the
+  // client keeps its initial value forever. That is not a hypothetical -- it is
+  // exactly how `isDecaying` shipped broken (the red doomsday skull never lit,
+  // because the flag flipped in the sim and no update ever carried it).
+  //
+  // This walks every scalar field on a PlayerUpdate, flips it, and asserts the
+  // diff carries it and applyStateUpdate merges it. Non-scalars (arrays, nested
+  // objects) have bespoke comparators and are covered by the tests above.
+  const SKIP = new Set([
+    // Identity: never changes for a given player.
+    "type",
+    "id",
+    "smallID",
+    "clientID",
+    // Deliberately NOT diffed: these ride the packed transferable channel
+    // (GameUpdateViewData.packedPlayerUpdates) every tick instead. See the
+    // diffPlayerUpdate doc comment.
+    "tilesOwned",
+    "gold",
+    "troops",
+    "goldEarned",
+  ]);
+
+  function flip(value: unknown): unknown {
+    if (typeof value === "boolean") return !value;
+    if (typeof value === "number") return value + 7;
+    if (typeof value === "bigint") return value + 7n;
+    if (typeof value === "string") return value + "-changed";
+    return undefined; // not a scalar
+  }
+
+  const base = makePlayerUpdate({ id: "p1" });
+  const asRecord = base as unknown as Record<string, unknown>;
+  const scalars = Object.keys(base).filter(
+    (k) =>
+      !SKIP.has(k) && asRecord[k] !== null && flip(asRecord[k]) !== undefined,
+  );
+
+  it("covers a meaningful number of fields (guards the walk itself)", () => {
+    expect(scalars.length).toBeGreaterThan(8);
+  });
+
+  for (const key of scalars) {
+    it(`transmits a change to ${key}`, () => {
+      const next = { ...base, [key]: flip(asRecord[key]) } as PlayerUpdate;
+      const diff = diffPlayerUpdate(base, next);
+      expect(diff, `${key} produced no diff at all`).not.toBeNull();
+      expect(
+        Object.prototype.hasOwnProperty.call(diff, key),
+        `${key} is missing a setIfDifferent() line in diffPlayerUpdate`,
+      ).toBe(true);
+    });
+  }
+
+  it("merges isDecaying through to the client state", () => {
+    const state = makePlayerState({ isDecaying: false });
+    applyStateUpdate(state, { ...base, isDecaying: true } as PlayerUpdate);
+    expect(state.isDecaying).toBe(true);
+    // ...and a later update that omits it must not clobber it.
+    applyStateUpdate(state, {
+      type: GameUpdateType.Player,
+      id: "p1",
+    } as PlayerUpdate);
+    expect(state.isDecaying).toBe(true);
   });
 });

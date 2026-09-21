@@ -3,6 +3,8 @@ import {
   Cell,
   GameUpdates,
   PlayerID,
+  PlayerType,
+  Team,
   TerrainType,
   TerraNullius,
   Tick,
@@ -16,6 +18,7 @@ import {
   GameUpdateViewData,
   SpawnPhaseEndUpdate,
 } from "../../core/game/GameUpdates";
+import { ATTACK_DELTA_OUTGOING } from "../../core/game/GameUpdateUtils";
 import {
   MotionPlanRecord,
   unpackMotionPlans,
@@ -23,6 +26,7 @@ import {
 import { TerrainMapData } from "../../core/game/TerrainMapLoader";
 import { TerraNulliusImpl } from "../../core/game/TerraNulliusImpl";
 import { UnitGrid, UnitPredicate } from "../../core/game/UnitGrid";
+import { UserSettings } from "../../core/game/UserSettings";
 import { ClientID, GameID, Player, PlayerCosmetics } from "../../core/Schemas";
 import { formatPlayerDisplayName } from "../../core/Util";
 import { WorkerClient } from "../../core/worker/WorkerClient";
@@ -32,11 +36,19 @@ import { extractNukeTelegraphs } from "../render/frame/derive/NukeTelegraphs";
 import { computePlayerStatus } from "../render/frame/derive/PlayerStatus";
 import { buildRelationMatrix } from "../render/frame/derive/RelationMatrix";
 import { RailroadCache } from "../render/frame/RailroadCache";
+import type { SpiralParams } from "../render/frame/SpiralTrails";
+import { SpiralTrails } from "../render/frame/SpiralTrails";
 import { TrailManager } from "../render/frame/TrailManager";
-import type { FrameData, NameEntry, TilePair } from "../render/types";
+import type { FrameData, NameEntry } from "../render/types";
 import { STRUCTURE_TYPES } from "../render/types";
+import { resolveTeamClanTag } from "../Utils";
+import type { CosmeticVisibility } from "./CosmeticVisibility";
 import { PlayerView } from "./PlayerView";
 import { UnitView } from "./UnitView";
+
+function readCosmeticVisibility(): CosmeticVisibility {
+  return new UserSettings().graphicsOverrides().cosmetics ?? {};
+}
 
 const TRAIL_TYPES: ReadonlySet<UnitType> = new Set<UnitType>([
   UnitType.TransportShip,
@@ -78,16 +90,26 @@ export class GameView implements GameMap {
   private _unitStates = new Map<number, import("../render/types").UnitState>();
   /** smallID → team, for the renderer's relation matrix (team games). */
   private _teams = new Map<number, string>();
+  private _teamClanTags: Map<Team, string | null> | null = null;
   private updatedTiles: TileRef[] = [];
   private updatedTerrainTiles: TileRef[] = [];
+  private nukeImpactTiles: TileRef[] = [];
+  /**
+   * Active units grouped by owner smallID, built lazily at most once per
+   * tick. Keeps per-player unit queries (PlayerView.units) at O(own units)
+   * instead of O(all units) — the leaderboard asks for every player's units
+   * in one pass, which is O(players × units) without this.
+   */
+  private _unitsByOwner = new Map<number, UnitView[]>();
+  private _unitsByOwnerStale = true;
 
   // ── FrameData accumulators (renderer-bound state) ─────────────────────
   private trailManager!: TrailManager;
+  private spiralTrails!: SpiralTrails;
   private railroadCache!: RailroadCache;
   /** Long-lived NameEntry map for the renderer's NamePass. */
   private _names = new Map<string, NameEntry>();
   /** Reusable scratch buffers for per-tick deltas. */
-  private readonly _changedTilesScratch: TilePair[] = [];
   private readonly _trailIdsScratch: number[] = [];
   /**
    * The single long-lived FrameData object. Fields are mutated in place each
@@ -99,6 +121,17 @@ export class GameView implements GameMap {
   private _firstPopulate = true;
 
   private _myPlayer: PlayerView | null = null;
+
+  // ── populateFrame dirty flags ──────────────────────────────────────────
+  // The derived structures below only depend on rarely-changing player
+  // fields, so they're rebuilt only when one of their inputs arrived this
+  // tick (PlayerUpdates are partial — field presence means "changed").
+  /** Names: nameData record applied, or a player was added. */
+  private _namesDirty = true;
+  /** Relation matrix: allies/embargoes changed, or a player was added. */
+  private _relationsDirty = true;
+  /** Alliance clusters: allies changed, or a player was added. */
+  private _clustersDirty = true;
 
   private unitGrid: UnitGrid;
   private unitMotionPlans = new Map<
@@ -116,6 +149,7 @@ export class GameView implements GameMap {
   private toDelete = new Set<number>();
 
   private _cosmetics: Map<string, PlayerCosmetics> = new Map();
+  private _cosmeticVisibility: CosmeticVisibility = readCosmeticVisibility();
 
   private _map: GameMap;
 
@@ -135,35 +169,30 @@ export class GameView implements GameMap {
     this._cosmetics = new Map(
       humans.map((h) => [h.clientID, h.cosmetics ?? {}]),
     );
-    for (const nation of this._mapData.nations) {
-      // Nations don't have client ids, so we use their name as the key instead.
-      this._cosmetics.set(nation.name, {
-        flag: nation.flag ? `/flags/${nation.flag}.svg` : undefined,
-      } satisfies PlayerCosmetics);
-    }
-    for (const extra of this._mapData.additionalNations) {
-      // Only set if not already provided by a manifest nation with the same name.
-      if (this._cosmetics.has(extra.name)) continue;
-      this._cosmetics.set(extra.name, {
-        flag: extra.flag ? `/flags/${extra.flag}.svg` : undefined,
-      } satisfies PlayerCosmetics);
-    }
+
+    // Nation-type players carry their own flag on the wire (PlayerUpdate.nationFlag,
+    // sourced from the manifest via PlayerInfo) rather than being looked up here by
+    // name — some maps define multiple nations with the same display name (e.g.
+    // India's and Pakistan's "Punjab", split by the 1947 partition), and a name-keyed
+    // lookup can't tell those apart. See the Nation-branch in update() below.
 
     const mapW = this._map.width();
     const mapH = this._map.height();
     this.trailManager = new TrailManager(mapW, mapH);
+    this.spiralTrails = new SpiralTrails(mapW);
     this.railroadCache = new RailroadCache(mapW, mapH);
 
     // Long-lived FrameData. Most fields are mutable references to long-lived
-    // buffers (tileState, trailState, etc.); some (_changedTilesScratch,
-    // derived arrays) are reused each tick. Properties marked `readonly` on
-    // FrameData only prevent reassignment, not mutation through the reference.
+    // buffers (tileState, trailState, etc.); changedTiles points at this
+    // tick's updatedTiles. Properties marked `readonly` on FrameData only
+    // prevent reassignment, not mutation through the reference.
     // events: fresh arrays we own; cleared and repopulated each tick.
     this._frame = {
       tick: 0,
       inSpawnPhase: true,
       tileState: this._map.tileStateBuffer(),
       trailState: this.trailManager.getTrailState(),
+      spiralRibbons: this.spiralTrails.getRibbons(),
       railroadState: this.railroadCache.railroadState,
       units: this._unitStates,
       players: this._playerStates,
@@ -173,7 +202,7 @@ export class GameView implements GameMap {
         conquestEvents: [],
         bonusEvents: [],
       },
-      changedTiles: this._changedTilesScratch,
+      changedTiles: null,
       railroadDirty: false,
       revealedRailTiles: this.railroadCache.revealedRailTiles,
       trailDirtyRowMin: 0,
@@ -183,6 +212,7 @@ export class GameView implements GameMap {
       playerStatus: new Map(),
       relationMatrix: new Uint8Array(0),
       relationSize: 0,
+      relationsDirty: false,
       allianceClusters: new Map(),
       nukeTelegraphs: [],
       attackRings: [],
@@ -248,6 +278,9 @@ export class GameView implements GameMap {
   }
 
   public update(gu: GameUpdateViewData) {
+    // Unit set/ownership changes below; rebuild the owner index on demand.
+    this._unitsByOwnerStale = true;
+
     this.toDelete.forEach((id) => {
       this._units.delete(id);
       this._unitStates.delete(id);
@@ -269,6 +302,10 @@ export class GameView implements GameMap {
       }
     }
 
+    // Nuke blast-radius tiles (for nukeable layer destruction).
+    const packedNukes = gu.packedNukeImpacts;
+    this.nukeImpactTiles = packedNukes ? Array.from(packedNukes) : [];
+
     if (gu.packedMotionPlans) {
       const records = unpackMotionPlans(gu.packedMotionPlans);
       this.applyMotionPlanRecords(records);
@@ -284,11 +321,29 @@ export class GameView implements GameMap {
     if (spawnPhaseEndUpdate) {
       this.startTick = spawnPhaseEndUpdate.startTick;
     }
+    if (gu.updates[GameUpdateType.Win].length > 0) {
+      this._gameOver = true;
+    }
 
     const myDisplayName = formatPlayerDisplayName(
       this._myUsername,
       this._myClanTag,
     );
+
+    // Name placements arrive only on ticks where the worker recomputed them
+    // (see GameUpdateViewData.playerNameViewData). Apply to existing alive
+    // players here; dead players keep their last placement (names freeze at
+    // death), and new players get theirs via the PlayerView constructor in
+    // pass 1 below.
+    if (gu.playerNameViewData !== undefined) {
+      for (const id in gu.playerNameViewData) {
+        const pv = this._players.get(id);
+        if (pv !== undefined && pv.state.isAlive) {
+          pv.nameData = gu.playerNameViewData[id];
+        }
+      }
+      this._namesDirty = true;
+    }
 
     // Pass 1: ensure every player exists with up-to-date PlayerState. We need
     // all smallIDs registered before pass 2 can translate embargo PlayerIDs.
@@ -305,15 +360,26 @@ export class GameView implements GameMap {
       if (pu.clientID !== undefined && pu.clientID === this._myClientID) {
         pu.name = this._myUsername;
         pu.displayName = myDisplayName;
+        pu.clanTag = this._myClanTag;
       }
 
       if (pu.smallID !== undefined) {
         this.smallIDToID.set(pu.smallID, pu.id);
       }
 
+      // Derived-data dirty tracking: field presence on a partial update
+      // means the field changed this tick.
+      if (pu.allies !== undefined) {
+        this._relationsDirty = true;
+        this._clustersDirty = true;
+      }
+      if (pu.embargoes !== undefined) {
+        this._relationsDirty = true;
+      }
+
       if (existing !== undefined) {
         existing.applyUpdate(pu);
-        const nextNameData = gu.playerNameViewData[pu.id];
+        const nextNameData = gu.playerNameViewData?.[pu.id];
         if (nextNameData !== undefined) {
           existing.nameData = nextNameData;
         }
@@ -321,10 +387,17 @@ export class GameView implements GameMap {
         const player = new PlayerView(
           this,
           pu,
-          gu.playerNameViewData[pu.id],
-          // First check human by clientID, then check nation by name.
+          gu.playerNameViewData?.[pu.id],
+          // Humans get cosmetics by clientID. Nations carry their flag
+          // directly on the update (see PlayerUpdate.nationFlag) rather than
+          // being looked up by name — some maps define multiple nations with
+          // the same display name (e.g. India's and Pakistan's "Punjab").
           this._cosmetics.get(pu.clientID ?? "") ??
-            this._cosmetics.get(pu.name!) ??
+            (pu.playerType === PlayerType.Nation && pu.nationFlag
+              ? ({
+                  flag: `/flags/${pu.nationFlag}.svg`,
+                } satisfies PlayerCosmetics)
+              : undefined) ??
             {},
         );
         this._players.set(pu.id, player);
@@ -333,6 +406,10 @@ export class GameView implements GameMap {
         if (team !== null) {
           this._teams.set(pu.smallID!, team);
         }
+        this._namesDirty = true;
+        this._relationsDirty = true;
+        this._clustersDirty = true;
+        this._teamClanTags = null;
       }
     });
 
@@ -353,13 +430,56 @@ export class GameView implements GameMap {
       player.setEmbargoSmallIDs(smallIDs);
     });
 
+    // Packed per-player stats: [smallID, tilesOwned, gold, troops, goldEarned]
+    // quints for every player whose stats changed this tick (the per-tick
+    // churn that no longer travels in PlayerUpdate objects). Applied after
+    // pass 1 so first-emission players exist; their quad carries the same
+    // values as the full update, so double-applying is harmless.
+    const packedStats = gu.packedPlayerUpdates;
+    if (packedStats !== undefined) {
+      for (let i = 0; i + 4 < packedStats.length; i += 5) {
+        const state = this._playerStates.get(packedStats[i]);
+        if (state === undefined) continue;
+        state.tilesOwned = packedStats[i + 1];
+        state.gold = packedStats[i + 2];
+        state.troops = packedStats[i + 3];
+        state.goldEarned = packedStats[i + 4];
+      }
+    }
+
+    // Packed attack troop counts: [ownerSmallID, direction, index, troops]
+    // quads. The attack arrays themselves are only resent when membership/
+    // order changes, which is also what keeps these indexes valid — a tick
+    // either resends an array (fresh troops included) or patches it, never
+    // both. See packAttackTroopDeltas.
+    const packedAttacks = gu.packedAttackUpdates;
+    if (packedAttacks !== undefined) {
+      for (let i = 0; i + 3 < packedAttacks.length; i += 4) {
+        const state = this._playerStates.get(packedAttacks[i]);
+        if (state === undefined) continue;
+        const attacks =
+          packedAttacks[i + 1] === ATTACK_DELTA_OUTGOING
+            ? state.outgoingAttacks
+            : state.incomingAttacks;
+        const attack = attacks[packedAttacks[i + 2]];
+        if (attack !== undefined) {
+          attack.troops = packedAttacks[i + 3];
+        }
+      }
+    }
+
     if (this._myClientID) {
       this._myPlayer ??= this.playerByClientID(this._myClientID);
     }
 
     for (const unit of this._units.values()) {
       unit._wasUpdated = false;
-      unit.lastPos = unit.lastPos.slice(-1);
+      // Only trim when a move appended a position — slicing a ≤1-element
+      // array would allocate an identical array per unit per tick, and most
+      // units (structures) never move.
+      if (unit.lastPos.length > 1) {
+        unit.lastPos = unit.lastPos.slice(-1);
+      }
     }
     gu.updates[GameUpdateType.Unit].forEach((update) => {
       let unit = this._units.get(update.id);
@@ -378,7 +498,15 @@ export class GameView implements GameMap {
         ) {
           this._structuresDirty = true;
         }
+        const hasMotionPlan = this.unitMotionPlans.has(update.id);
+        const oldPos = unit.state.pos;
+        const oldLastPos = unit.state.lastPos;
         unit.update(update);
+        if (hasMotionPlan) {
+          unit.state.pos = oldPos;
+          unit.state.lastPos = oldLastPos;
+          unit.lastPos.pop();
+        }
       } else {
         unit = new UnitView(this, update);
         this._units.set(update.id, unit);
@@ -434,23 +562,27 @@ export class GameView implements GameMap {
       this._unitStates as Map<number, import("../render/types").UnitState>,
       this._trailIdsScratch,
     );
+    // Spiral nukeTrail ribbons follow the same tracked units; extends the
+    // path of each live spiral-cosmetic nuke and drops dead ones.
+    this.spiralTrails.update(
+      this._unitStates as Map<number, import("../render/types").UnitState>,
+      this._trailIdsScratch,
+    );
 
-    // Changed-tile delta refs (zero-copy: state field unused in live mode).
-    this._changedTilesScratch.length = 0;
-    for (let i = 0; i < this.updatedTiles.length; i++) {
-      this._changedTilesScratch.push({ ref: this.updatedTiles[i], state: 0 });
-    }
-
-    // Names map — rebuilt every tick. Cheap (one entry per player, no big
-    // arrays). Entry order is irrelevant for the renderer.
-    this._names.clear();
-    for (const p of this._players.values()) {
-      this._names.set(p.id(), {
-        playerID: p.id(),
-        x: p.nameData?.x ?? 0,
-        y: p.nameData?.y ?? 0,
-        size: p.nameData?.size ?? 0,
-      });
+    // Names map — rebuilt only when a placement record arrived or a player
+    // was added (nameData values cannot change between those ticks). Entry
+    // order is irrelevant for the renderer.
+    if (this._namesDirty) {
+      this._namesDirty = false;
+      this._names.clear();
+      for (const p of this._players.values()) {
+        this._names.set(p.id(), {
+          playerID: p.id(),
+          x: p.nameData?.x ?? 0,
+          y: p.nameData?.y ?? 0,
+          size: p.nameData?.size ?? 0,
+        });
+      }
     }
 
     // FrameEvents — clear arrays, then re-populate from this tick's updates.
@@ -476,18 +608,41 @@ export class GameView implements GameMap {
       tick: gu.tick,
       allianceDuration: this._config.allianceDuration(),
       isTransitiveTarget: (sid) =>
-        this._myPlayer?.hasTransitiveTarget(sid) ?? false,
+        (this._markedPlayers?.has(sid) ?? false) ||
+        (this._myPlayer?.hasTransitiveTarget(sid) ?? false),
+      doomsdayClockWarnTicks:
+        this._config.doomsdayClockConfig().warnSeconds * 10,
     });
-    const rel = buildRelationMatrix(this._playerStates, this._teams);
-    f.relationMatrix = rel.matrix;
-    f.relationSize = rel.size;
-    f.allianceClusters = computeAllianceClusters(this._playerStates);
+    // Relations + clusters depend only on allies/embargoes/teams, which
+    // change rarely (teams only when a player is added) — recompute only
+    // when one of those inputs arrived this tick. buildRelationMatrix
+    // writes into a reusable module-level buffer, so skipping the call
+    // leaves f.relationMatrix's contents intact. f.relationsDirty lets the
+    // upload layer skip the GPU push (and the full-map border recompute it
+    // triggers) on unchanged ticks.
+    if (this._relationsDirty) {
+      this._relationsDirty = false;
+      const rel = buildRelationMatrix(this._playerStates, this._teams);
+      f.relationMatrix = rel.matrix;
+      f.relationSize = rel.size;
+      f.relationsDirty = true;
+    } else {
+      f.relationsDirty = false;
+    }
+    if (this._clustersDirty) {
+      this._clustersDirty = false;
+      f.allianceClusters = computeAllianceClusters(this._playerStates);
+    }
     f.nukeTelegraphs = extractNukeTelegraphs(
       this._unitStates,
       this._map.width(),
       this._myPlayer?.smallID() ?? 0,
-      rel.matrix,
-      rel.size,
+      // The latest relation matrix — recomputed above when dirty, otherwise
+      // carried over on the frame from the last rebuild.
+      f.relationMatrix,
+      f.relationSize,
+      this.unitMotionPlans,
+      gu.tick,
     );
     f.attackRings = this._myPlayer
       ? extractAttackRings(
@@ -506,7 +661,9 @@ export class GameView implements GameMap {
       f.structuresDirty = true; // force initial structure upload
       this._firstPopulate = false;
     } else {
-      f.changedTiles = this._changedTilesScratch;
+      // Live reference to this tick's changed refs — consumers copy what
+      // they keep (TerritoryPass buckets them synchronously in the upload).
+      f.changedTiles = this.updatedTiles;
     }
 
     // Reset transient flags for next tick.
@@ -527,6 +684,7 @@ export class GameView implements GameMap {
         unitType: u.unitType,
         pos: u.pos,
         reachedTarget: u.reachedTarget,
+        ownerSmallID: u.ownerID,
       });
     }
     const myID = this._myPlayer?.id();
@@ -535,6 +693,7 @@ export class GameView implements GameMap {
       const conquered = this._players.get(c.conqueredId);
       if (conquered === undefined) continue;
       const loc = conquered.nameLocation();
+      if (loc === undefined) continue;
       ev.conquestEvents.push({
         x: loc.x,
         y: loc.y,
@@ -557,6 +716,20 @@ export class GameView implements GameMap {
   /** Public accessor: the renderer reads this and uploads to the GPU. */
   frameData(): FrameData {
     return this._frame;
+  }
+
+  /**
+   * Set a player's spiral nuke-trail geometry (from their nukeTrail
+   * cosmetic). Pushed by WebGLFrameBuilder once the player's effect
+   * resolves; their nukes then grow helix ribbons (SpiralTrails →
+   * SpiralRibbonPass) on top of the plain stamped trail.
+   */
+  setNukeTrailSpiral(smallID: number, params: SpiralParams): void {
+    this.spiralTrails.setParams(smallID, params);
+  }
+
+  clearNukeTrailSpiral(smallID: number): void {
+    this.spiralTrails.clearParams(smallID);
   }
 
   private advanceMotionPlannedUnits(currentTick: Tick): void {
@@ -582,6 +755,8 @@ export class GameView implements GameMap {
         this.unitGrid.updateUnitCell(unit);
         continue;
       }
+
+      unit.applyDerivedRest();
 
       // Once a plan is past its final step, `newTile` remains clamped to the last path tile.
       // Drop finished plans to avoid repeatedly marking static units as updated each tick.
@@ -795,6 +970,9 @@ export class GameView implements GameMap {
   recentlyUpdatedTerrainTiles(): TileRef[] {
     return this.updatedTerrainTiles;
   }
+  recentlyNukedTiles(): TileRef[] {
+    return this.nukeImpactTiles;
+  }
 
   nearbyUnits(
     tile: TileRef,
@@ -867,6 +1045,39 @@ export class GameView implements GameMap {
     return Array.from(this._players.values());
   }
 
+  teamClanTag(team: Team | null): string | null {
+    if (!team) return null;
+    if (this._teamClanTags === null) {
+      if (this._players.size === 0) return null;
+      this._teamClanTags = this.initTeamClanTags();
+    }
+    return this._teamClanTags.get(team) ?? null;
+  }
+
+  invalidateTeamClanTags(): void {
+    this._teamClanTags = null;
+  }
+
+  private initTeamClanTags(): Map<Team, string | null> {
+    const teams = new Map<Team, PlayerView[]>();
+    for (const player of this._players.values()) {
+      const t = player.team();
+      if (t) {
+        let list = teams.get(t);
+        if (!list) {
+          list = [];
+          teams.set(t, list);
+        }
+        list.push(player);
+      }
+    }
+    const result = new Map<Team, string | null>();
+    for (const [t, players] of teams.entries()) {
+      result.set(t, resolveTeamClanTag(players));
+    }
+    return result;
+  }
+
   /**
    * Recompute every player's theme-derived colors. Call when the active theme
    * changes mid-game (e.g. toggling colorblind mode) so existing territories
@@ -875,6 +1086,21 @@ export class GameView implements GameMap {
   refreshPlayerColors(): void {
     for (const p of this._players.values()) {
       p.refreshColors();
+    }
+  }
+
+  cosmeticVisibility(): CosmeticVisibility {
+    return this._cosmeticVisibility;
+  }
+
+  /**
+   * Re-read the cosmetics visibility settings and re-resolve every player's
+   * drawn cosmetics and colors; the renderer must be refreshed afterwards.
+   */
+  refreshPlayerCosmetics(): void {
+    this._cosmeticVisibility = readCosmeticVisibility();
+    for (const p of this._players.values()) {
+      p.refreshCosmetics();
     }
   }
 
@@ -914,6 +1140,13 @@ export class GameView implements GameMap {
     if (this.lastUpdate === null) return 0;
     return this.lastUpdate.tick;
   }
+  // Set once the sim has decided the game (WinUpdate). Play may go on for
+  // those who stay, but the server archives the record at that point.
+  private _gameOver = false;
+  gameOver(): boolean {
+    return this._gameOver;
+  }
+
   inSpawnPhase(): boolean {
     return this.startTick === null;
   }
@@ -945,6 +1178,9 @@ export class GameView implements GameMap {
   config(): Config {
     return this._config;
   }
+  isSpectator(): boolean {
+    return !this.myPlayer()?.isAlive() || this._config.isReplay();
+  }
   units(...types: UnitType[]): UnitView[] {
     if (types.length === 0) {
       return Array.from(this._units.values()).filter((u) => u.isActive());
@@ -952,6 +1188,28 @@ export class GameView implements GameMap {
     return Array.from(this._units.values()).filter(
       (u) => u.isActive() && types.includes(u.type()),
     );
+  }
+
+  /**
+   * Active units owned by the given player (smallID). The grouping is built
+   * lazily at most once per tick; the returned array must not be mutated.
+   */
+  unitsOwnedBy(ownerSmallID: number): readonly UnitView[] {
+    if (this._unitsByOwnerStale) {
+      this._unitsByOwnerStale = false;
+      this._unitsByOwner.clear();
+      for (const u of this._units.values()) {
+        if (!u.isActive()) continue;
+        const sid = u.state.ownerID;
+        const arr = this._unitsByOwner.get(sid);
+        if (arr === undefined) {
+          this._unitsByOwner.set(sid, [u]);
+        } else {
+          arr.push(u);
+        }
+      }
+    }
+    return this._unitsByOwner.get(ownerSmallID) ?? [];
   }
   unit(id: number): UnitView | undefined {
     return this._units.get(id);
@@ -1003,11 +1261,21 @@ export class GameView implements GameMap {
   numLandTiles(): number {
     return this._map.numLandTiles();
   }
+  waterVersion(): number {
+    return this._map.waterVersion();
+  }
+  /** Map layers defined in the map's info.json, if any. */
+  layers(): import("../../core/game/TerrainMapLoader").MapLayer[] {
+    return this._mapData.layers ?? [];
+  }
   isValidCoord(x: number, y: number): boolean {
     return this._map.isValidCoord(x, y);
   }
   isLand(ref: TileRef): boolean {
     return this._map.isLand(ref);
+  }
+  isImpassable(ref: TileRef): boolean {
+    return this._map.isImpassable(ref);
   }
   isOceanShore(ref: TileRef): boolean {
     return this._map.isOceanShore(ref);
@@ -1066,6 +1334,9 @@ export class GameView implements GameMap {
   neighbors4(ref: TileRef, out: TileRef[]): number {
     return this._map.neighbors4(ref, out);
   }
+  neighbors8(ref: TileRef, out: TileRef[]): number {
+    return this._map.neighbors8(ref, out);
+  }
   forEachNeighborWithDiag(
     ref: TileRef,
     callback: (neighbor: TileRef) => void,
@@ -1122,7 +1393,36 @@ export class GameView implements GameMap {
     return this._gameID;
   }
 
+  private _markedPlayers: ReadonlySet<number> | null = null;
+
   focusedPlayer(): PlayerView | null {
     return this.myPlayer();
+  }
+
+  /**
+   * Extra smallIDs drawn with the target crosshair by the name pass, on top
+   * of the player's real transitive targets (e.g. the tutorial pointing at
+   * capturable tribes). Null when nothing is requested.
+   */
+  setMarkedPlayers(ids: ReadonlySet<number> | null): void {
+    this._markedPlayers = ids;
+  }
+
+  markedPlayers(): ReadonlySet<number> | null {
+    return this._markedPlayers;
+  }
+
+  private _ownSpawnRing = false;
+
+  /**
+   * Keep the local player's spawn-phase ring drawn after the phase ends
+   * (the tutorial uses it to show a new player where their territory is).
+   */
+  setOwnSpawnRing(show: boolean): void {
+    this._ownSpawnRing = show;
+  }
+
+  ownSpawnRing(): boolean {
+    return this._ownSpawnRing;
   }
 }

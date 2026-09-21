@@ -1,5 +1,6 @@
 import { placeName, placeSpawnName } from "../client/hud/NameBoxCalculator";
 import { Config } from "./configuration/Config";
+import { DoomsdayClockExecution } from "./execution/DoomsdayClockExecution";
 import { Executor } from "./execution/ExecutionManager";
 import { RecomputeRailClusterExecution } from "./execution/RecomputeRailClusterExecution";
 import { SpawnTimerExecution } from "./execution/SpawnTimerExecution";
@@ -38,11 +39,12 @@ export async function createGameRunner(
   mapLoader: GameMapLoader,
   callBack: (gu: GameUpdateViewData | ErrorUpdate) => void,
 ): Promise<GameRunner> {
-  const config = new Config(gameStart.config, null, false);
+  const config = new Config(gameStart.config, null, false, gameStart.listed);
   const gameMap = await loadGameMap(
     gameStart.config.gameMap,
     gameStart.config.gameMapSize,
     mapLoader,
+    false, // Worker never renders layers — skip image loading to save memory.
   );
   const random = new PseudoRandom(simpleHash(gameStart.gameID));
 
@@ -55,6 +57,7 @@ export async function createGameRunner(
       p.isLobbyCreator ?? false,
       p.clanTag,
       p.friends ?? [],
+      p.teamIndex ?? null,
     );
   });
 
@@ -82,7 +85,12 @@ export async function createGameRunner(
 
   const gr = new GameRunner(
     game,
-    new Executor(game, gameStart.gameID, clientID),
+    new Executor(
+      game,
+      gameStart.gameID,
+      clientID,
+      gameStart.tribes?.map((t) => t.name),
+    ),
     callBack,
   );
   gr.init();
@@ -118,6 +126,9 @@ export class GameRunner {
       );
     }
     this.game.addExecution(new WinCheckExecution());
+    if (this.game.config().doomsdayClockConfig().enabled) {
+      this.game.addExecution(new DoomsdayClockExecution());
+    }
     if (!this.game.config().isUnitDisabled(UnitType.Factory)) {
       this.game.addExecution(
         new RecomputeRailClusterExecution(this.game.railNetwork()),
@@ -166,6 +177,11 @@ export class GameRunner {
       return false;
     }
 
+    // Track whether placements were recomputed this tick — the record is
+    // only attached to the update when it could have changed, so the main
+    // thread doesn't structured-clone an identical ~all-players record on
+    // every other tick.
+    let viewDataChanged = false;
     if (this.game.inSpawnPhase()) {
       for (const p of this.game.players()) {
         if (p.type() !== PlayerType.Human && p.type() !== PlayerType.Nation) {
@@ -173,6 +189,7 @@ export class GameRunner {
         }
         if (p.spawnTile() === undefined) continue;
         this.playerViewData[p.id()] = placeSpawnName(this.game, p);
+        viewDataChanged = true;
       }
     }
 
@@ -185,17 +202,26 @@ export class GameRunner {
       for (const p of this.game.players()) {
         this.playerViewData[p.id()] = placeName(this.game, p);
       }
+      viewDataChanged = true;
     }
 
     const packedTileUpdates = this.game.drainPackedTileUpdates();
     const packedMotionPlans = this.game.drainPackedMotionPlans();
+    const packedPlayerUpdates = this.game.drainPackedPlayerUpdates();
+    const packedAttackUpdates = this.game.drainPackedAttackUpdates();
+    const nukeImpactTiles = this.game.drainNukeImpacts();
+    const packedNukeImpacts =
+      nukeImpactTiles.length > 0 ? new Uint32Array(nukeImpactTiles) : undefined;
 
     this.callBack({
       tick: this.game.ticks(),
       packedTileUpdates,
       ...(packedMotionPlans ? { packedMotionPlans } : {}),
+      ...(packedPlayerUpdates ? { packedPlayerUpdates } : {}),
+      ...(packedAttackUpdates ? { packedAttackUpdates } : {}),
+      ...(packedNukeImpacts ? { packedNukeImpacts } : {}),
       updates: updates,
-      playerNameViewData: this.playerViewData,
+      ...(viewDataChanged ? { playerNameViewData: this.playerViewData } : {}),
       tickExecutionDuration: tickExecutionDuration,
       pendingTurns: pendingTurns ?? 0,
     });
@@ -266,7 +292,9 @@ export class GameRunner {
       throw new Error(`player with id ${playerID} not found`);
     }
     return {
-      borderTiles: player.borderTiles(),
+      // Copy into a plain Set: this result crosses the worker boundary via
+      // structured clone, which TileSet does not survive.
+      borderTiles: new Set(player.borderTiles()),
     } as PlayerBorderTiles;
   }
 

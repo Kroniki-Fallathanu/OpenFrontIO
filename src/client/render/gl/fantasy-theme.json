@@ -127,7 +127,7 @@
     "#c1c155",
     "#b69a38"
   ],
-  "botColors": [
+  "classicBotColors": [
     "#7b8f67",
     "#8d8d71",
     "#9c9c62",
@@ -491,5 +491,12 @@
   "defendedBorderDarkenDark": 0.4,
   "structureContrastTarget": 0.5,
   "focusedBorderColor": "#e8d39a",
-  "spawnHighlightColor": "#ffcf4d"
+  "spawnHighlightColor": "#ffcf4d",
+  "terrain": {
+    "oceanColor": "#193951",
+    "sandColor": "#968460",
+    "plainsColor": "#4A6E3A",
+    "highlandColor": "#6A6646",
+    "mountainColor": "#8C8C9E"
+  }
 }
