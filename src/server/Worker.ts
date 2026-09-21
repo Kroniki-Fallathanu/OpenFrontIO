@@ -309,13 +309,47 @@ export async function startWorker() {
       log.warn(`cannot create game, id ${id} already exists`);
       return res.status(409).json({ error: "Game ID already exists" });
     }
-    // The host RPG has no lobby screen of its own, so the battle starts as
-    // soon as its creator joins.
-    game.enableAutoStartOnCreatorJoin();
+    // A solo battle has nobody to wait for, so it starts the moment its
+    // creator joins. A challenge must not: the spawn phase runs from the
+    // start, so a game that starts on the creator's join leaves everyone
+    // invited watching a map they can no longer spawn on. The host starts it
+    // through /api/game/:id/start once the others are in.
+    if (gc?.gameType === GameType.Singleplayer) {
+      game.enableAutoStartOnCreatorJoin();
+    }
 
     log.info(
       `Worker ${workerId}: Hexah battle ${id} created${creatorPersistentID ? `, creator: ${creatorPersistentID.substring(0, 8)}...` : ""}`,
     );
+    res.json(game.gameInfo());
+  });
+
+  // Hexah „Dzikie Ziemie": the host starts a waiting challenge once the
+  // invited players are in. Same shared key as create_game; the host checks
+  // that the caller really is the battle's creator before asking.
+  app.post("/api/game/:id/start", async (req, res) => {
+    const internalKey = ServerEnv.internalApiKey();
+    if (
+      internalKey.length === 0 ||
+      req.headers["x-internal-key"] !== internalKey
+    ) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const id = req.params.id;
+    if (!ID.safeParse(id).success) {
+      return res.status(400).json({ error: "Invalid game id" });
+    }
+    const game = gm.game(id);
+    if (game === null) {
+      return res.status(404).json({ error: "Game not found" });
+    }
+    if (game.hasStarted() || game.startsAtMs() !== undefined) {
+      // Idempotent: a repeated request (a double click) answers with the
+      // start already scheduled instead of moving it.
+      return res.json(game.gameInfo());
+    }
+    game.setStartsAt(Date.now());
+    log.info(`Worker ${workerId}: Hexah battle ${id} started by host`);
     res.json(game.gameInfo());
   });
 

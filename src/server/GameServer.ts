@@ -822,6 +822,11 @@ export class GameServer {
     }
   }
 
+  /** When the game is scheduled to start, or undefined while it waits. */
+  public startsAtMs(): number | undefined {
+    return this.startsAt;
+  }
+
   public setStartsAt(startsAt: number) {
     this.startsAt = startsAt;
     // Record when the lobby first became visible to players, used to measure lobby fill time.
