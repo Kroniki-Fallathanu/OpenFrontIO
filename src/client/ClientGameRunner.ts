@@ -36,6 +36,7 @@ import {
 } from "../core/game/UserSettings";
 import { WorkerClient } from "../core/worker/WorkerClient";
 import { getPersistentID } from "./Auth";
+import { HexahVictoryCheck } from "./HexahVictoryCheck";
 import {
   AutoUpgradeEvent,
   DoBoatAttackEvent,
@@ -600,6 +601,10 @@ export class ClientGameRunner {
   private lastTickReceiveTime: number = 0;
   private currentTickDelay: number | undefined = undefined;
 
+  // Embedded Hexah battles: the host page asks whether the battle is already
+  // won. Harmless outside an iframe, where it never starts listening.
+  private hexahVictoryCheck: HexahVictoryCheck | null = null;
+
   constructor(
     private lobby: LobbyConfig,
     private clientID: ClientID | undefined,
@@ -703,6 +708,11 @@ export class ClientGameRunner {
 
     this.renderer.initialize();
     this.input.initialize();
+    this.hexahVictoryCheck = new HexahVictoryCheck(
+      this.gameView,
+      this.eventBus,
+    );
+    this.hexahVictoryCheck.install();
     this.worker.start((gu: GameUpdateViewData | ErrorUpdate) => {
       if (this.lobby.gameStartInfo === undefined) {
         throw new Error("missing gameStartInfo");
@@ -735,6 +745,7 @@ export class ClientGameRunner {
       this.currentTickDelay = undefined;
 
       if (gu.updates[GameUpdateType.Win].length > 0) {
+        this.hexahVictoryCheck?.rememberWin(gu.updates[GameUpdateType.Win][0]);
         this.saveGame(gu.updates[GameUpdateType.Win][0]);
       }
     });
@@ -868,6 +879,8 @@ export class ClientGameRunner {
   }
 
   public stop() {
+    this.hexahVictoryCheck?.dispose();
+    this.hexahVictoryCheck = null;
     this.soundManager.dispose();
     this.graphicsListenerAbort?.abort();
     if (!this.isActive) return;

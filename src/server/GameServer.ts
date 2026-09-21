@@ -11,6 +11,7 @@ import {
   ClientSendWinnerMessage,
   GameConfig,
   GameInfo,
+  GameRecord,
   GameStartInfo,
   GameStartInfoSchema,
   PlayerRecord,
@@ -68,6 +69,10 @@ export class GameServer {
   private lastPingUpdate = 0;
 
   private winner: ClientSendWinnerMessage | null = null;
+  // Archived result kept so it can be sent to the Hexah host again on request.
+  private lastGameRecord: GameRecord | null = null;
+  private lastResultRepublishAt = 0;
+  private static readonly RESULT_REPUBLISH_COOLDOWN_MS = 60_000;
 
   // Note: This can be undefined if accessed before the game starts.
   private gameStartInfo!: GameStartInfo;
@@ -1106,6 +1111,30 @@ export class GameServer {
     });
   }
 
+  /**
+   * Sends the wild battle result to the host again, at most once a minute.
+   *
+   * The webhook is fire and forget, so a receiver that was restarting when
+   * the game ended never learns the outcome and the player is left in front
+   * of a finished battle. Nothing is recomputed here: the same archived
+   * record goes out, and the receiver already treats repeats as no-ops.
+   */
+  private republishWildBattleResult() {
+    if (this.lastGameRecord === null) {
+      return;
+    }
+    const now = Date.now();
+    if (
+      now - this.lastResultRepublishAt <
+      GameServer.RESULT_REPUBLISH_COOLDOWN_MS
+    ) {
+      return;
+    }
+    this.lastResultRepublishAt = now;
+    this.log.info("republishing wild battle result", { gameID: this.id });
+    emitWildBattleResult(this.lastGameRecord);
+  }
+
   private archiveGame() {
     this.log.info("archiving game", {
       gameID: this.id,
@@ -1144,6 +1173,7 @@ export class GameServer {
       ),
     );
     archive(gameRecord);
+    this.lastGameRecord = gameRecord;
     // Hexah „Dzikie Ziemie": notify Strapi of the result (S2S, HMAC; no-op
     // unless RESULT_WEBHOOK_* env is set).
     emitWildBattleResult(gameRecord);
@@ -1253,10 +1283,15 @@ export class GameServer {
   private handleWinner(client: Client, clientMsg: ClientSendWinnerMessage) {
     if (
       this.outOfSyncClients.has(client.clientID) ||
-      this.isKicked(client.clientID) ||
-      this.winner !== null ||
-      client.reportedWinner !== null
+      this.isKicked(client.clientID)
     ) {
+      return;
+    }
+    if (this.winner !== null || client.reportedWinner !== null) {
+      // The winner is settled. A client repeating it is asking for the result
+      // to be published again, which is how an embedded Hexah battle recovers
+      // from a result that never reached the host.
+      this.republishWildBattleResult();
       return;
     }
     client.reportedWinner = clientMsg.winner;
