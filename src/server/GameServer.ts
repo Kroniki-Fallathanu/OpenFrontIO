@@ -1440,6 +1440,25 @@ export class GameServer {
           gameID: this.id,
         });
       } else {
+        // A vote that never reached a majority still decides here, as long as
+        // nobody voted against it. An embedded Hexah battle is reported to the
+        // host RPG only through this record, and the fork's own win screen is
+        // hidden there, so a winnerless record is read as an interrupted
+        // battle: the player who took the map ends up with nothing. It happens
+        // whenever the winner's own client drops right after it votes — the
+        // re-tally then counts only the IPs still connected, and theirs is
+        // gone. By the time the game ends there is no one left to overrule,
+        // and a contested vote (two candidates) still resolves to nothing.
+        // Public games keep the majority rule: their result is ranked.
+        if (!this.isPublic()) {
+          const uncontested = this.winnerVote.adoptUncontested();
+          if (uncontested !== null) {
+            this.log.info(
+              `adopting uncontested winner vote (${uncontested.votes} votes)`,
+              { gameID: this.id },
+            );
+          }
+        }
         // Not awaited: the upload handles its own failures (Archive.ts), and
         // waiting would only hold up GameManager's prune of this game.
         this.archiveGame();

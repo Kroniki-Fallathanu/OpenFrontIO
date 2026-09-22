@@ -35,6 +35,18 @@ export class VoteRound<T> {
     return null;
   }
 
+  // The single candidate every voter backed, whatever the electorate, or
+  // null when nobody voted or the votes are split across candidates. There
+  // is no majority in it, so the caller has to be somewhere a vote nobody
+  // contradicted is enough (see GameServer.end).
+  sole(): { value: T; votes: number } | null {
+    if (this.candidates.size !== 1) {
+      return null;
+    }
+    const [candidate] = this.candidates.values();
+    return { value: candidate.value, votes: candidate.ips.size };
+  }
+
   // Re-tally against a shrunken electorate: like result(), but both the
   // electorate and the counted votes are restricted to `activeIPs`. Votes
   // from departed IPs must not count here — otherwise a player could vote

@@ -46,6 +46,20 @@ export class WinnerVote {
     return result;
   }
 
+  // Adopts a vote nobody contradicted: one candidate, no majority behind it.
+  // Only for the end of a game — while it runs, the majority rule is what
+  // keeps one player in a 1v1 from crowning themselves.
+  adoptUncontested(): VoteOutcome<ClientSendWinnerMessage> | null {
+    if (this.decided !== null) {
+      return null;
+    }
+    const result = this.round.sole();
+    if (result !== null) {
+      this.decided = result.value;
+    }
+    return result;
+  }
+
   // Re-tally against a shrunken electorate: only votes from `activeIPs`
   // count, and only against `activeIPs.size` (see VoteRound.resultAmong).
   tallyAmong(
