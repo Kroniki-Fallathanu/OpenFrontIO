@@ -4,17 +4,17 @@ import { assetUrl } from "../../../core/AssetUrls";
 import { EventBus } from "../../../core/EventBus";
 import { GameType } from "../../../core/game/Game";
 import { createNextLobby } from "../../Api";
-import { isHexahEmbedded } from "../../Auth";
 import { ClientEnv } from "../../ClientEnv";
 import "../../components/DoomsdayClockPanel";
 import "../../components/OvertimePanel";
 import { Controller } from "../../Controller";
 import { crazyGamesSDK } from "../../CrazyGamesSDK";
 import { isDesktopShell } from "../../DesktopShell";
+import { isHexahEmbedded, leaveGame } from "../../HexahEmbed";
 import { showInGameAlert, showInGameConfirm } from "../../InGameModal";
 import { TogglePauseIntentEvent } from "../../InputHandler";
 import { PauseGameIntentEvent, SendWinnerEvent } from "../../Transport";
-import { homeHref, showToast, translateText } from "../../Utils";
+import { showToast, translateText } from "../../Utils";
 import { GameView } from "../../view";
 import { ImmunityBarVisibleEvent } from "./ImmunityTimer";
 import { ShowReplayPanelEvent } from "./ReplayPanel";
@@ -279,7 +279,7 @@ export class GameRightSidebar extends LitElement implements Controller {
     await crazyGamesSDK.requestMidgameAd();
     await crazyGamesSDK.gameplayStop();
     // redirect to the home page
-    window.location.href = homeHref();
+    leaveGame();
   }
 
   private onSettingsButtonClick() {

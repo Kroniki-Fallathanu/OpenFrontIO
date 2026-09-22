@@ -4,14 +4,14 @@ import { crazyGamesSDK } from "src/client/CrazyGamesSDK";
 import { PauseGameIntentEvent } from "src/client/Transport";
 import { assetUrl } from "../../../core/AssetUrls";
 import { EventBus } from "../../../core/EventBus";
-import { isHexahEmbedded } from "../../Auth";
 import { Controller } from "../../Controller";
+import { isHexahEmbedded, leaveGame } from "../../HexahEmbed";
 import {
   AlternateViewEvent,
   ToggleRenderDebugGuiEvent,
 } from "../../InputHandler";
 import type { UserSettingModal } from "../../UserSettingModal";
-import { homeHref, translateText } from "../../Utils";
+import { translateText } from "../../Utils";
 const exitIcon = assetUrl("images/ExitIconWhite.svg");
 const settingsIcon = assetUrl("images/SettingIconWhite.svg");
 const treeIcon = assetUrl("images/TreeIconWhite.svg");
@@ -158,7 +158,7 @@ export class SettingsModal extends LitElement implements Controller {
 
   private onExitButtonClick() {
     // redirect to the home page
-    window.location.href = homeHref();
+    leaveGame();
   }
 
   render() {

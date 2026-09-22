@@ -45,9 +45,10 @@ import { getPlayToken } from "./Auth";
 import { LobbyConfig } from "./ClientGameRunner";
 import { clientPlatform } from "./ClientPlatform";
 import { isDesktopShell } from "./DesktopShell";
+import { leaveGame } from "./HexahEmbed";
 import { showInGameConfirm } from "./InGameModal";
 import { LocalServer } from "./LocalServer";
-import { homeHref, translateText } from "./Utils";
+import { translateText } from "./Utils";
 import { PlayerView } from "./view";
 
 export class PauseGameIntentEvent implements GameEvent {
@@ -566,8 +567,9 @@ export class Transport {
     );
   }
 
-  // The session is over: say so once, offer the menu, and let the player
-  // stay to look at the map if they would rather.
+  // The session is over: say so once, offer the way out, and let the player
+  // stay to look at the map if they would rather. Inside an embedded Hexah
+  // battle that way out is the host RPG's arena, not this game's menu.
   private showTerminalDialog(message: string) {
     void showInGameConfirm(message, {
       variant: "warning",
@@ -575,7 +577,7 @@ export class Transport {
       cancelText: translateText("common.close"),
     }).then((goHome) => {
       if (goHome) {
-        window.location.href = homeHref();
+        leaveGame();
       }
     });
   }
