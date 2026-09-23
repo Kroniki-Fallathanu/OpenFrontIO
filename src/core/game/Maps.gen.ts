@@ -73,9 +73,12 @@ export enum GameMapType {
   IrishSea = "Irish Sea", // map-generator/assets/maps/irishsea/info.json
   Italia = "Italia", // map-generator/assets/maps/italia/info.json
   Japan = "Japan", // map-generator/assets/maps/japan/info.json
+  JezioraOlbrzymow = "Jeziora Olbrzymów", // map-generator/assets/maps/jezioraolbrzymow/info.json
   JuanDeFucaStrait = "Juan De Fuca Strait", // map-generator/assets/maps/juandefucastrait/info.json
   Korea = "Korea", // map-generator/assets/maps/korea/info.json
   KotlinaTraw = "Kotlina Traw", // map-generator/assets/maps/kotlinatraw/info.json
+  KrainaTysiacaJezior = "Kraina Tysiąca Jezior", // map-generator/assets/maps/krainatysiacajezior/info.json
+  KraterPrzodkow = "Krater Przodków", // map-generator/assets/maps/kraterprzodkow/info.json
   LabiryntGrani = "Labirynt Grani", // map-generator/assets/maps/labiryntgrani/info.json
   Labyrinth = "Labyrinth", // map-generator/assets/maps/labyrinth/info.json
   LasVegasStrip = "Las Vegas Strip", // map-generator/assets/maps/lasvegasstrip/info.json
@@ -93,6 +96,8 @@ export enum GameMapType {
   MississippiRiver = "Mississippi River", // map-generator/assets/maps/mississippiriver/info.json
   Montreal = "Montreal", // map-generator/assets/maps/montreal/info.json
   MoreThanLuck = "More Than Luck", // map-generator/assets/maps/morethanluck/info.json
+  MorzeWewnetrzne = "Morze Wewnętrzne", // map-generator/assets/maps/morzewewnetrzne/info.json
+  MroznePobrzeze = "Mroźne Pobrzeże", // map-generator/assets/maps/mroznepobrzeze/info.json
   NewYorkCity = "New York City", // map-generator/assets/maps/newyorkcity/info.json
   NewZealand = "New Zealand", // map-generator/assets/maps/newzealand/info.json
   NileDelta = "Nile Delta", // map-generator/assets/maps/niledelta/info.json
@@ -105,6 +110,7 @@ export enum GameMapType {
   Pluto = "Pluto", // map-generator/assets/maps/pluto/info.json
   PulicatLake = "Pulicat Lake", // map-generator/assets/maps/pulicatlake/info.json
   QingChina = "Qing China", // map-generator/assets/maps/qingchina/info.json
+  RowninaSiedmiuRzek = "Równina Siedmiu Rzek", // map-generator/assets/maps/rowninasiedmiurzek/info.json
   Russia = "Russia", // map-generator/assets/maps/russia/info.json
   SanFrancisco = "San Francisco", // map-generator/assets/maps/sanfrancisco/info.json
   Scandinavia = "Scandinavia", // map-generator/assets/maps/scandinavia/info.json
@@ -118,6 +124,7 @@ export enum GameMapType {
   StraitOfMalacca = "Strait Of Malacca", // map-generator/assets/maps/straitofmalacca/info.json
   Surrounded = "Surrounded", // map-generator/assets/maps/surrounded/info.json
   Svalmel = "Svalmel", // map-generator/assets/maps/svalmel/info.json
+  SzareTurnie = "Szare Turnie", // map-generator/assets/maps/szareturnie/info.json
   TaiwanStrait = "Taiwan Strait", // map-generator/assets/maps/taiwanstrait/info.json
   TheBox = "The Box", // map-generator/assets/maps/thebox/info.json
   TierraDelFuego = "Tierra Del Fuego", // map-generator/assets/maps/tierradelfuego/info.json
@@ -132,13 +139,16 @@ export enum GameMapType {
   Venice = "Venice", // map-generator/assets/maps/venice/info.json
   Vietnam = "Vietnam", // map-generator/assets/maps/vietnam/info.json
   WarshipWarship = "Warship Warship", // map-generator/assets/maps/warshipwarship/info.json
+  WilczeFiordy = "Wilcze Fiordy", // map-generator/assets/maps/wilczefiordy/info.json
   World = "World", // map-generator/assets/maps/world/info.json
   WorldInverted = "World Inverted", // map-generator/assets/maps/worldinverted/info.json
   Wrzosowiska = "Wrzosowiska", // map-generator/assets/maps/wrzosowiska/info.json
   WyspaWygnancow = "Wyspa Wygnańców", // map-generator/assets/maps/wyspawygnancow/info.json
+  WyzynaSlonca = "Wyżyna Słońca", // map-generator/assets/maps/wyzynaslonca/info.json
   YangtzeRiver = "Yangtze River", // map-generator/assets/maps/yangtzeriver/info.json
   YellowSea = "Yellow Sea", // map-generator/assets/maps/yellowsea/info.json
   Yenisei = "Yenisei", // map-generator/assets/maps/yenisei/info.json
+  ZatokiKupcow = "Zatoki Kupców", // map-generator/assets/maps/zatokikupcow/info.json
   ZmijowaRzeka = "Żmijowa Rzeka", // map-generator/assets/maps/zmijowarzeka/info.json
 }
 
@@ -1514,6 +1524,18 @@ export const maps: readonly MapInfo[] = [
     themes: ["asia"],
   },
   {
+    id: "JezioraOlbrzymow",
+    type: GameMapType.JezioraOlbrzymow,
+    translationKey: "map.jezioraolbrzymow",
+    categories: ["fictional"],
+    multiplayerFrequency: 0,
+    ffaFrequency: -1,
+    teamFrequency: -1,
+    specialFrequency: -1,
+    defaultNationCount: 12,
+    themes: ["hexah"],
+  },
+  {
     id: "JuanDeFucaStrait",
     type: GameMapType.JuanDeFucaStrait,
     translationKey: "map.juandefucastrait",
@@ -1549,6 +1571,30 @@ export const maps: readonly MapInfo[] = [
     teamFrequency: -1,
     specialFrequency: -1,
     defaultNationCount: 10,
+    themes: ["hexah"],
+  },
+  {
+    id: "KrainaTysiacaJezior",
+    type: GameMapType.KrainaTysiacaJezior,
+    translationKey: "map.krainatysiacajezior",
+    categories: ["fictional"],
+    multiplayerFrequency: 0,
+    ffaFrequency: -1,
+    teamFrequency: -1,
+    specialFrequency: -1,
+    defaultNationCount: 12,
+    themes: ["hexah"],
+  },
+  {
+    id: "KraterPrzodkow",
+    type: GameMapType.KraterPrzodkow,
+    translationKey: "map.kraterprzodkow",
+    categories: ["fictional"],
+    multiplayerFrequency: 0,
+    ffaFrequency: -1,
+    teamFrequency: -1,
+    specialFrequency: -1,
+    defaultNationCount: 12,
     themes: ["hexah"],
   },
   {
@@ -1894,6 +1940,30 @@ export const maps: readonly MapInfo[] = [
     specialTeamCount: 5,
   },
   {
+    id: "MorzeWewnetrzne",
+    type: GameMapType.MorzeWewnetrzne,
+    translationKey: "map.morzewewnetrzne",
+    categories: ["fictional"],
+    multiplayerFrequency: 0,
+    ffaFrequency: -1,
+    teamFrequency: -1,
+    specialFrequency: -1,
+    defaultNationCount: 12,
+    themes: ["hexah"],
+  },
+  {
+    id: "MroznePobrzeze",
+    type: GameMapType.MroznePobrzeze,
+    translationKey: "map.mroznepobrzeze",
+    categories: ["fictional"],
+    multiplayerFrequency: 0,
+    ffaFrequency: -1,
+    teamFrequency: -1,
+    specialFrequency: -1,
+    defaultNationCount: 12,
+    themes: ["hexah"],
+  },
+  {
     id: "NewYorkCity",
     type: GameMapType.NewYorkCity,
     translationKey: "map.newyorkcity",
@@ -2035,6 +2105,18 @@ export const maps: readonly MapInfo[] = [
     specialFrequency: -1,
     defaultNationCount: 32,
     themes: ["asia"],
+  },
+  {
+    id: "RowninaSiedmiuRzek",
+    type: GameMapType.RowninaSiedmiuRzek,
+    translationKey: "map.rowninasiedmiurzek",
+    categories: ["fictional"],
+    multiplayerFrequency: 0,
+    ffaFrequency: -1,
+    teamFrequency: -1,
+    specialFrequency: -1,
+    defaultNationCount: 12,
+    themes: ["hexah"],
   },
   {
     id: "Russia",
@@ -2245,6 +2327,18 @@ export const maps: readonly MapInfo[] = [
     themes: ["europe", "north_america"],
   },
   {
+    id: "SzareTurnie",
+    type: GameMapType.SzareTurnie,
+    translationKey: "map.szareturnie",
+    categories: ["fictional"],
+    multiplayerFrequency: 0,
+    ffaFrequency: -1,
+    teamFrequency: -1,
+    specialFrequency: -1,
+    defaultNationCount: 12,
+    themes: ["hexah"],
+  },
+  {
     id: "TaiwanStrait",
     type: GameMapType.TaiwanStrait,
     translationKey: "map.taiwanstrait",
@@ -2409,6 +2503,18 @@ export const maps: readonly MapInfo[] = [
     defaultNationCount: 10,
   },
   {
+    id: "WilczeFiordy",
+    type: GameMapType.WilczeFiordy,
+    translationKey: "map.wilczefiordy",
+    categories: ["fictional"],
+    multiplayerFrequency: 0,
+    ffaFrequency: -1,
+    teamFrequency: -1,
+    specialFrequency: -1,
+    defaultNationCount: 12,
+    themes: ["hexah"],
+  },
+  {
     id: "World",
     type: GameMapType.World,
     translationKey: "map.world",
@@ -2457,6 +2563,18 @@ export const maps: readonly MapInfo[] = [
     themes: ["hexah"],
   },
   {
+    id: "WyzynaSlonca",
+    type: GameMapType.WyzynaSlonca,
+    translationKey: "map.wyzynaslonca",
+    categories: ["fictional"],
+    multiplayerFrequency: 0,
+    ffaFrequency: -1,
+    teamFrequency: -1,
+    specialFrequency: -1,
+    defaultNationCount: 12,
+    themes: ["hexah"],
+  },
+  {
     id: "YangtzeRiver",
     type: GameMapType.YangtzeRiver,
     translationKey: "map.yangtzeriver",
@@ -2490,6 +2608,18 @@ export const maps: readonly MapInfo[] = [
     specialFrequency: -1,
     defaultNationCount: 6,
     themes: ["asia"],
+  },
+  {
+    id: "ZatokiKupcow",
+    type: GameMapType.ZatokiKupcow,
+    translationKey: "map.zatokikupcow",
+    categories: ["fictional"],
+    multiplayerFrequency: 0,
+    ffaFrequency: -1,
+    teamFrequency: -1,
+    specialFrequency: -1,
+    defaultNationCount: 12,
+    themes: ["hexah"],
   },
   {
     id: "ZmijowaRzeka",

@@ -1,0 +1,85 @@
+{
+  "categories": ["fictional"],
+  "id": "KrainaTysiacaJezior",
+  "map": {
+    "height": 1200,
+    "num_land_tiles": 1348783,
+    "width": 1600
+  },
+  "map16x": {
+    "height": 300,
+    "num_land_tiles": 79793,
+    "width": 400
+  },
+  "map4x": {
+    "height": 600,
+    "num_land_tiles": 330503,
+    "width": 800
+  },
+  "multiplayer_frequency": 0,
+  "name": "Kraina Tysiąca Jezior",
+  "nations": [
+    {
+      "coordinates": [1132, 360],
+      "flag": "",
+      "name": "Warownia Skalna"
+    },
+    {
+      "coordinates": [40, 1153],
+      "flag": "",
+      "name": "Obóz Rysi"
+    },
+    {
+      "coordinates": [64, 40],
+      "flag": "",
+      "name": "Stanica Sarnia"
+    },
+    {
+      "coordinates": [871, 1149],
+      "flag": "",
+      "name": "Stanica Jesionowa"
+    },
+    {
+      "coordinates": [1507, 913],
+      "flag": "",
+      "name": "Stanica Czarnych Wód"
+    },
+    {
+      "coordinates": [370, 605],
+      "flag": "",
+      "name": "Osada Wrzosowa"
+    },
+    {
+      "coordinates": [638, 126],
+      "flag": "",
+      "name": "Obóz Lisi"
+    },
+    {
+      "coordinates": [1559, 40],
+      "flag": "",
+      "name": "Obóz Borsuczy"
+    },
+    {
+      "coordinates": [1559, 478],
+      "flag": "",
+      "name": "Osada Sosnowa"
+    },
+    {
+      "coordinates": [469, 1018],
+      "flag": "",
+      "name": "Osada Leszczynowa"
+    },
+    {
+      "coordinates": [783, 657],
+      "flag": "",
+      "name": "Gród Srebrnej Rzeki"
+    },
+    {
+      "coordinates": [1159, 746],
+      "flag": "",
+      "name": "Gród Wydrzy"
+    }
+  ],
+  "themes": ["hexah"],
+  "translation_key": "map.krainatysiacajezior"
+}

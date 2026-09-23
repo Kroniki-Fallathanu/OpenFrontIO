@@ -1,0 +1,78 @@
+[
+  {
+    "folder": "krainatysiacajezior",
+    "name": "Kraina Tysiąca Jezior",
+    "src": "greatlakes",
+    "box": [400, 0, 1600, 1200],
+    "post": "r180"
+  },
+  {
+    "folder": "wilczefiordy",
+    "name": "Wilcze Fiordy",
+    "src": "hecatestrait",
+    "box": [100, 800, 1600, 1200],
+    "t": "r90,fy",
+    "post": "fx"
+  },
+  {
+    "folder": "mroznepobrzeze",
+    "name": "Mroźne Pobrzeże",
+    "src": "scandinavia",
+    "box": [200, 500, 1600, 1200],
+    "t": "r90,fy",
+    "post": "r180"
+  },
+  {
+    "folder": "rowninasiedmiurzek",
+    "name": "Równina Siedmiu Rzek",
+    "src": "indiansubcontinent",
+    "box": [400, 200, 1600, 1200],
+    "post": "fy"
+  },
+  {
+    "folder": "kraterprzodkow",
+    "name": "Krater Przodków",
+    "src": "manicouagan",
+    "box": [0, 200, 1600, 1200],
+    "post": "fx"
+  },
+  {
+    "folder": "szareturnie",
+    "name": "Szare Turnie",
+    "src": "balkans",
+    "box": [200, 600, 1600, 1200],
+    "t": "r90,fy",
+    "post": "fx"
+  },
+  {
+    "folder": "wyzynaslonca",
+    "name": "Wyżyna Słońca",
+    "src": "africa",
+    "box": [0, 700, 1600, 1200],
+    "t": "r90,fy",
+    "post": "fy"
+  },
+  {
+    "folder": "zatokikupcow",
+    "name": "Zatoki Kupców",
+    "src": "halkidiki",
+    "box": [200, 0, 1600, 1200],
+    "post": "fx"
+  },
+  {
+    "folder": "morzewewnetrzne",
+    "name": "Morze Wewnętrzne",
+    "src": "gatewaytotheatlantic",
+    "box": [0, 800, 1600, 1200],
+    "t": "r90,fy",
+    "post": "fx"
+  },
+  {
+    "folder": "jezioraolbrzymow",
+    "name": "Jeziora Olbrzymów",
+    "src": "twolakes",
+    "box": [200, 400, 1600, 1200],
+    "t": "r90,fy",
+    "post": "fy"
+  }
+]

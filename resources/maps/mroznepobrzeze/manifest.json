@@ -1,0 +1,85 @@
+{
+  "categories": ["fictional"],
+  "id": "MroznePobrzeze",
+  "map": {
+    "height": 1200,
+    "num_land_tiles": 1349584,
+    "width": 1600
+  },
+  "map16x": {
+    "height": 300,
+    "num_land_tiles": 79040,
+    "width": 400
+  },
+  "map4x": {
+    "height": 600,
+    "num_land_tiles": 329288,
+    "width": 800
+  },
+  "multiplayer_frequency": 0,
+  "name": "Mroźne Pobrzeże",
+  "nations": [
+    {
+      "coordinates": [628, 1047],
+      "flag": "",
+      "name": "Obóz Lisi"
+    },
+    {
+      "coordinates": [1556, 54],
+      "flag": "",
+      "name": "Osada Sosnowa"
+    },
+    {
+      "coordinates": [40, 40],
+      "flag": "",
+      "name": "Warownia Cisowa"
+    },
+    {
+      "coordinates": [1497, 838],
+      "flag": "",
+      "name": "Osada Mgielna"
+    },
+    {
+      "coordinates": [798, 228],
+      "flag": "",
+      "name": "Stanica Czarnych Wód"
+    },
+    {
+      "coordinates": [40, 765],
+      "flag": "",
+      "name": "Obóz Borsuczy"
+    },
+    {
+      "coordinates": [1004, 702],
+      "flag": "",
+      "name": "Gród Sokoli"
+    },
+    {
+      "coordinates": [307, 402],
+      "flag": "",
+      "name": "Osada Brzozowa"
+    },
+    {
+      "coordinates": [1344, 432],
+      "flag": "",
+      "name": "Obóz Rysi"
+    },
+    {
+      "coordinates": [1154, 40],
+      "flag": "",
+      "name": "Stanica Jesionowa"
+    },
+    {
+      "coordinates": [67, 1159],
+      "flag": "",
+      "name": "Obóz Kani"
+    },
+    {
+      "coordinates": [455, 40],
+      "flag": "",
+      "name": "Stanica Bursztynowa"
+    }
+  ],
+  "themes": ["hexah"],
+  "translation_key": "map.mroznepobrzeze"
+}

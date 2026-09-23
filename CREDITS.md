@@ -109,6 +109,18 @@ Licensed under ODbL
 © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)  
 Licensed under ODbL
 
+### Hexah "Dzikie Ziemie" Arena Maps
+
+Kraina Tysiąca Jezior, Wilcze Fiordy, Mroźne Pobrzeże, Równina Siedmiu Rzek,
+Krater Przodków, Szare Turnie, Wyżyna Słońca, Zatoki Kupców, Morze Wewnętrzne
+and Jeziora Olbrzymów are cropped, rotated and mirrored from the terrain of the
+OpenFront maps Great Lakes, Hecate Strait, Scandinavia, Indian Subcontinent,
+Manicouagan, Balkans, Africa, Halkidiki, Gateway to the Atlantic and Two Lakes
+(`scripts/hexah/wild-maps.json` lists the exact source and crop of each).
+Derived from OpenFront assets, licensed under
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/); the source
+maps keep the attributions listed above.
+
 ## Icons
 
 ### [The Noun Project](https://thenounproject.com/)

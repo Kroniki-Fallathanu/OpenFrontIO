@@ -1,0 +1,85 @@
+{
+  "categories": ["fictional"],
+  "id": "KraterPrzodkow",
+  "map": {
+    "height": 1200,
+    "num_land_tiles": 1414632,
+    "width": 1600
+  },
+  "map16x": {
+    "height": 300,
+    "num_land_tiles": 84180,
+    "width": 400
+  },
+  "map4x": {
+    "height": 600,
+    "num_land_tiles": 347457,
+    "width": 800
+  },
+  "multiplayer_frequency": 0,
+  "name": "Krater Przodków",
+  "nations": [
+    {
+      "coordinates": [486, 797],
+      "flag": "",
+      "name": "Warownia Modrzewiowa"
+    },
+    {
+      "coordinates": [1538, 40],
+      "flag": "",
+      "name": "Osada Bobrów"
+    },
+    {
+      "coordinates": [1559, 1159],
+      "flag": "",
+      "name": "Gród Sokoli"
+    },
+    {
+      "coordinates": [66, 41],
+      "flag": "",
+      "name": "Stanica Sarnia"
+    },
+    {
+      "coordinates": [802, 126],
+      "flag": "",
+      "name": "Osada Wrzosowa"
+    },
+    {
+      "coordinates": [1121, 686],
+      "flag": "",
+      "name": "Obóz Borsuczy"
+    },
+    {
+      "coordinates": [40, 1139],
+      "flag": "",
+      "name": "Stanica Czarnych Wód"
+    },
+    {
+      "coordinates": [40, 551],
+      "flag": "",
+      "name": "Obóz Kruczy"
+    },
+    {
+      "coordinates": [867, 1105],
+      "flag": "",
+      "name": "Gród Wydrzy"
+    },
+    {
+      "coordinates": [1552, 507],
+      "flag": "",
+      "name": "Osada Brzozowa"
+    },
+    {
+      "coordinates": [434, 362],
+      "flag": "",
+      "name": "Warownia Cisowa"
+    },
+    {
+      "coordinates": [1190, 276],
+      "flag": "",
+      "name": "Stanica Kruków"
+    }
+  ],
+  "themes": ["hexah"],
+  "translation_key": "map.kraterprzodkow"
+}
