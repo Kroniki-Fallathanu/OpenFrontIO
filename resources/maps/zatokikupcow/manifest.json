@@ -1,0 +1,85 @@
+{
+  "categories": ["fictional"],
+  "id": "ZatokiKupcow",
+  "map": {
+    "height": 1200,
+    "num_land_tiles": 1338591,
+    "width": 1600
+  },
+  "map16x": {
+    "height": 300,
+    "num_land_tiles": 81629,
+    "width": 400
+  },
+  "map4x": {
+    "height": 600,
+    "num_land_tiles": 331763,
+    "width": 800
+  },
+  "multiplayer_frequency": 0,
+  "name": "Zatoki Kupców",
+  "nations": [
+    {
+      "coordinates": [612, 382],
+      "flag": "",
+      "name": "Stanica Kruków"
+    },
+    {
+      "coordinates": [1559, 796],
+      "flag": "",
+      "name": "Warownia Modrzewiowa"
+    },
+    {
+      "coordinates": [41, 1023],
+      "flag": "",
+      "name": "Warownia Grani"
+    },
+    {
+      "coordinates": [1326, 40],
+      "flag": "",
+      "name": "Stanica Jesionowa"
+    },
+    {
+      "coordinates": [764, 1092],
+      "flag": "",
+      "name": "Osada Leszczynowa"
+    },
+    {
+      "coordinates": [50, 51],
+      "flag": "",
+      "name": "Gród Borów"
+    },
+    {
+      "coordinates": [1116, 519],
+      "flag": "",
+      "name": "Obóz Borsuczy"
+    },
+    {
+      "coordinates": [427, 792],
+      "flag": "",
+      "name": "Warownia Skalna"
+    },
+    {
+      "coordinates": [887, 40],
+      "flag": "",
+      "name": "Osada Bobrów"
+    },
+    {
+      "coordinates": [1200, 1048],
+      "flag": "",
+      "name": "Osada Wrzosowa"
+    },
+    {
+      "coordinates": [1559, 382],
+      "flag": "",
+      "name": "Gród Mglistych Turni"
+    },
+    {
+      "coordinates": [435, 40],
+      "flag": "",
+      "name": "Obóz Kruczy"
+    }
+  ],
+  "themes": ["hexah"],
+  "translation_key": "map.zatokikupcow"
+}

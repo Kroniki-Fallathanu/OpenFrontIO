@@ -1,0 +1,70 @@
+{
+  "id": "WyzynaSlonca",
+  "name": "Wyżyna Słońca",
+  "translation_key": "map.wyzynaslonca",
+  "categories": ["fictional"],
+  "multiplayer_frequency": 0,
+  "nations": [
+    {
+      "coordinates": [172, 1095],
+      "name": "Stanica Sarnia",
+      "flag": ""
+    },
+    {
+      "coordinates": [1559, 41],
+      "name": "Gród Borów",
+      "flag": ""
+    },
+    {
+      "coordinates": [464, 40],
+      "name": "Obóz Borsuczy",
+      "flag": ""
+    },
+    {
+      "coordinates": [1209, 1034],
+      "name": "Warownia Grani",
+      "flag": ""
+    },
+    {
+      "coordinates": [1010, 407],
+      "name": "Warownia Cisowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [40, 490],
+      "name": "Warownia Grabowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [678, 857],
+      "name": "Obóz Kani",
+      "flag": ""
+    },
+    {
+      "coordinates": [1559, 600],
+      "name": "Gród Mglistych Turni",
+      "flag": ""
+    },
+    {
+      "coordinates": [474, 474],
+      "name": "Stanica Jesionowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [55, 51],
+      "name": "Osada Brzozowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [861, 40],
+      "name": "Warownia Modrzewiowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [872, 1159],
+      "name": "Gród Orli",
+      "flag": ""
+    }
+  ],
+  "themes": ["hexah"]
+}

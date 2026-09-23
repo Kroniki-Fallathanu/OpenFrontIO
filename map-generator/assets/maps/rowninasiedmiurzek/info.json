@@ -1,0 +1,70 @@
+{
+  "id": "RowninaSiedmiuRzek",
+  "name": "Równina Siedmiu Rzek",
+  "translation_key": "map.rowninasiedmiurzek",
+  "categories": ["fictional"],
+  "multiplayer_frequency": 0,
+  "nations": [
+    {
+      "coordinates": [414, 830],
+      "name": "Stanica Kruków",
+      "flag": ""
+    },
+    {
+      "coordinates": [1557, 153],
+      "name": "Obóz Borsuczy",
+      "flag": ""
+    },
+    {
+      "coordinates": [1417, 1158],
+      "name": "Osada Jaworowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [660, 59],
+      "name": "Osada Brzozowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [1055, 597],
+      "name": "Osada Olchowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [862, 1156],
+      "name": "Osada Sosnowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [1559, 669],
+      "name": "Stanica Bursztynowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [40, 1159],
+      "name": "Stanica Mszysta",
+      "flag": ""
+    },
+    {
+      "coordinates": [269, 359],
+      "name": "Gród Srebrnej Rzeki",
+      "flag": ""
+    },
+    {
+      "coordinates": [657, 495],
+      "name": "Obóz Rysi",
+      "flag": ""
+    },
+    {
+      "coordinates": [40, 688],
+      "name": "Osada Trzcinowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [1143, 938],
+      "name": "Osada Leszczynowa",
+      "flag": ""
+    }
+  ],
+  "themes": ["hexah"]
+}

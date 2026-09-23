@@ -48,6 +48,17 @@ const FREQUENCY_EXEMPTIONS: Set<GameMapName> = new Set([
   "DolinaBrodu",
   "BlizniaczeKotliny",
   "Wrzosowiska",
+  // Hexah arena maps cut from OpenFront terrain (scripts/hexah).
+  "KrainaTysiacaJezior",
+  "WilczeFiordy",
+  "MroznePobrzeze",
+  "RowninaSiedmiuRzek",
+  "KraterPrzodkow",
+  "SzareTurnie",
+  "WyzynaSlonca",
+  "ZatokiKupcow",
+  "MorzeWewnetrzne",
+  "JezioraOlbrzymow",
 ]);
 
 // Keys in the en.json "map" section that are UI strings, not map names.

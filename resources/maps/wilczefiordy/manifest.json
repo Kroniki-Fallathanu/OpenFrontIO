@@ -1,0 +1,85 @@
+{
+  "categories": ["fictional"],
+  "id": "WilczeFiordy",
+  "map": {
+    "height": 1200,
+    "num_land_tiles": 1337828,
+    "width": 1600
+  },
+  "map16x": {
+    "height": 300,
+    "num_land_tiles": 78473,
+    "width": 400
+  },
+  "map4x": {
+    "height": 600,
+    "num_land_tiles": 326769,
+    "width": 800
+  },
+  "multiplayer_frequency": 0,
+  "name": "Wilcze Fiordy",
+  "nations": [
+    {
+      "coordinates": [609, 696],
+      "flag": "",
+      "name": "Warownia Skalna"
+    },
+    {
+      "coordinates": [1558, 67],
+      "flag": "",
+      "name": "Osada Leszczynowa"
+    },
+    {
+      "coordinates": [1559, 1139],
+      "flag": "",
+      "name": "Osada Wrzosowa"
+    },
+    {
+      "coordinates": [53, 1146],
+      "flag": "",
+      "name": "Stanica Bursztynowa"
+    },
+    {
+      "coordinates": [1222, 622],
+      "flag": "",
+      "name": "Obóz Borsuczy"
+    },
+    {
+      "coordinates": [793, 153],
+      "flag": "",
+      "name": "Obóz Lisi"
+    },
+    {
+      "coordinates": [983, 1143],
+      "flag": "",
+      "name": "Osada Sosnowa"
+    },
+    {
+      "coordinates": [518, 1159],
+      "flag": "",
+      "name": "Obóz Kani"
+    },
+    {
+      "coordinates": [140, 757],
+      "flag": "",
+      "name": "Stanica Kruków"
+    },
+    {
+      "coordinates": [1192, 201],
+      "flag": "",
+      "name": "Stanica Czarnych Wód"
+    },
+    {
+      "coordinates": [1559, 447],
+      "flag": "",
+      "name": "Warownia Modrzewiowa"
+    },
+    {
+      "coordinates": [895, 492],
+      "flag": "",
+      "name": "Osada Jaworowa"
+    }
+  ],
+  "themes": ["hexah"],
+  "translation_key": "map.wilczefiordy"
+}

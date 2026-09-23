@@ -1,0 +1,70 @@
+{
+  "id": "SzareTurnie",
+  "name": "Szare Turnie",
+  "translation_key": "map.szareturnie",
+  "categories": ["fictional"],
+  "multiplayer_frequency": 0,
+  "nations": [
+    {
+      "coordinates": [415, 491],
+      "name": "Obóz Kruczy",
+      "flag": ""
+    },
+    {
+      "coordinates": [1559, 1135],
+      "name": "Warownia Skalna",
+      "flag": ""
+    },
+    {
+      "coordinates": [1421, 40],
+      "name": "Stanica Sarnia",
+      "flag": ""
+    },
+    {
+      "coordinates": [759, 1159],
+      "name": "Stanica Mszysta",
+      "flag": ""
+    },
+    {
+      "coordinates": [84, 1092],
+      "name": "Osada Jaworowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [1133, 625],
+      "name": "Gród Cierni",
+      "flag": ""
+    },
+    {
+      "coordinates": [851, 90],
+      "name": "Warownia Grabowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [1559, 472],
+      "name": "Warownia Modrzewiowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [1156, 1039],
+      "name": "Gród Turów",
+      "flag": ""
+    },
+    {
+      "coordinates": [735, 749],
+      "name": "Warownia Kamiennych Wrót",
+      "flag": ""
+    },
+    {
+      "coordinates": [40, 531],
+      "name": "Obóz Borsuczy",
+      "flag": ""
+    },
+    {
+      "coordinates": [405, 901],
+      "name": "Obóz Rysi",
+      "flag": ""
+    }
+  ],
+  "themes": ["hexah"]
+}

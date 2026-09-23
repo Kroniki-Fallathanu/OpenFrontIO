@@ -1,0 +1,70 @@
+{
+  "id": "MorzeWewnetrzne",
+  "name": "Morze Wewnętrzne",
+  "translation_key": "map.morzewewnetrzne",
+  "categories": ["fictional"],
+  "multiplayer_frequency": 0,
+  "nations": [
+    {
+      "coordinates": [565, 363],
+      "name": "Obóz Borsuczy",
+      "flag": ""
+    },
+    {
+      "coordinates": [1559, 1159],
+      "name": "Gród Mglistych Turni",
+      "flag": ""
+    },
+    {
+      "coordinates": [40, 1159],
+      "name": "Gród Srebrnej Rzeki",
+      "flag": ""
+    },
+    {
+      "coordinates": [1450, 128],
+      "name": "Osada Leszczynowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [879, 989],
+      "name": "Osada Jaworowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [40, 588],
+      "name": "Warownia Modrzewiowa",
+      "flag": ""
+    },
+    {
+      "coordinates": [116, 40],
+      "name": "Osada Bobrów",
+      "flag": ""
+    },
+    {
+      "coordinates": [1329, 662],
+      "name": "Warownia Skalna",
+      "flag": ""
+    },
+    {
+      "coordinates": [890, 40],
+      "name": "Warownia Grani",
+      "flag": ""
+    },
+    {
+      "coordinates": [443, 967],
+      "name": "Obóz Kruczy",
+      "flag": ""
+    },
+    {
+      "coordinates": [917, 578],
+      "name": "Gród Turów",
+      "flag": ""
+    },
+    {
+      "coordinates": [1201, 1146],
+      "name": "Gród Orli",
+      "flag": ""
+    }
+  ],
+  "themes": ["hexah"]
+}

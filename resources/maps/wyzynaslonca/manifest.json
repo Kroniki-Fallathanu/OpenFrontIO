@@ -1,0 +1,85 @@
+{
+  "categories": ["fictional"],
+  "id": "WyzynaSlonca",
+  "map": {
+    "height": 1200,
+    "num_land_tiles": 1477990,
+    "width": 1600
+  },
+  "map16x": {
+    "height": 300,
+    "num_land_tiles": 88399,
+    "width": 400
+  },
+  "map4x": {
+    "height": 600,
+    "num_land_tiles": 363780,
+    "width": 800
+  },
+  "multiplayer_frequency": 0,
+  "name": "Wyżyna Słońca",
+  "nations": [
+    {
+      "coordinates": [172, 1095],
+      "flag": "",
+      "name": "Stanica Sarnia"
+    },
+    {
+      "coordinates": [1559, 41],
+      "flag": "",
+      "name": "Gród Borów"
+    },
+    {
+      "coordinates": [464, 40],
+      "flag": "",
+      "name": "Obóz Borsuczy"
+    },
+    {
+      "coordinates": [1209, 1034],
+      "flag": "",
+      "name": "Warownia Grani"
+    },
+    {
+      "coordinates": [1010, 407],
+      "flag": "",
+      "name": "Warownia Cisowa"
+    },
+    {
+      "coordinates": [40, 490],
+      "flag": "",
+      "name": "Warownia Grabowa"
+    },
+    {
+      "coordinates": [678, 857],
+      "flag": "",
+      "name": "Obóz Kani"
+    },
+    {
+      "coordinates": [1559, 600],
+      "flag": "",
+      "name": "Gród Mglistych Turni"
+    },
+    {
+      "coordinates": [474, 474],
+      "flag": "",
+      "name": "Stanica Jesionowa"
+    },
+    {
+      "coordinates": [55, 51],
+      "flag": "",
+      "name": "Osada Brzozowa"
+    },
+    {
+      "coordinates": [861, 40],
+      "flag": "",
+      "name": "Warownia Modrzewiowa"
+    },
+    {
+      "coordinates": [872, 1159],
+      "flag": "",
+      "name": "Gród Orli"
+    }
+  ],
+  "themes": ["hexah"],
+  "translation_key": "map.wyzynaslonca"
+}

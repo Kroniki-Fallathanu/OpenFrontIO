@@ -1,0 +1,85 @@
+{
+  "categories": ["fictional"],
+  "id": "JezioraOlbrzymow",
+  "map": {
+    "height": 1200,
+    "num_land_tiles": 1489663,
+    "width": 1600
+  },
+  "map16x": {
+    "height": 300,
+    "num_land_tiles": 91563,
+    "width": 400
+  },
+  "map4x": {
+    "height": 600,
+    "num_land_tiles": 370293,
+    "width": 800
+  },
+  "multiplayer_frequency": 0,
+  "name": "Jeziora Olbrzymów",
+  "nations": [
+    {
+      "coordinates": [1415, 371],
+      "flag": "",
+      "name": "Warownia Kamiennych Wrót"
+    },
+    {
+      "coordinates": [46, 1155],
+      "flag": "",
+      "name": "Gród Borów"
+    },
+    {
+      "coordinates": [311, 40],
+      "flag": "",
+      "name": "Warownia Grabowa"
+    },
+    {
+      "coordinates": [957, 1159],
+      "flag": "",
+      "name": "Warownia Grani"
+    },
+    {
+      "coordinates": [768, 522],
+      "flag": "",
+      "name": "Gród Turów"
+    },
+    {
+      "coordinates": [1559, 985],
+      "flag": "",
+      "name": "Gród Mglistych Turni"
+    },
+    {
+      "coordinates": [40, 565],
+      "flag": "",
+      "name": "Stanica Bursztynowa"
+    },
+    {
+      "coordinates": [874, 40],
+      "flag": "",
+      "name": "Stanica Kruków"
+    },
+    {
+      "coordinates": [502, 1120],
+      "flag": "",
+      "name": "Osada Bobrów"
+    },
+    {
+      "coordinates": [1164, 752],
+      "flag": "",
+      "name": "Obóz Kani"
+    },
+    {
+      "coordinates": [414, 711],
+      "flag": "",
+      "name": "Osada Trzcinowa"
+    },
+    {
+      "coordinates": [1559, 40],
+      "flag": "",
+      "name": "Obóz Kruczy"
+    }
+  ],
+  "themes": ["hexah"],
+  "translation_key": "map.jezioraolbrzymow"
+}
