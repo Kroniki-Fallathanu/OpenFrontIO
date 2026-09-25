@@ -36,19 +36,8 @@ const FREQUENCY_EXEMPTIONS: Set<GameMapName> = new Set([
   "BritanniaClassic",
   "ChoppingBlock",
   "Luna",
-  // Hexah wild-lands mini maps: spawned server-to-server only, never in the
-  // public multiplayer rotation.
-  "KotlinaTraw",
-  "DwaJeziora",
-  "ZmijowaRzeka",
-  "GrzbietSmoka",
-  "StepDzikich",
-  "WyspaWygnancow",
-  "LabiryntGrani",
-  "DolinaBrodu",
-  "BlizniaczeKotliny",
-  "Wrzosowiska",
-  // Hexah arena maps cut from OpenFront terrain (scripts/hexah).
+  // Hexah arena maps cut from OpenFront terrain (scripts/hexah): spawned
+  // server-to-server only, never in the public multiplayer rotation.
   "KrainaTysiacaJezior",
   "WilczeFiordy",
   "MroznePobrzeze",
